@@ -151,7 +151,8 @@ jobs:
     needs: release
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'macos' }}
     runs-on: ${{ github.event.inputs.macos_runner || 'macos-15' }}
-    timeout-minutes: 90
+    # Two release builds (arm64 + x86_64) run back to back, ~50 min each.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:

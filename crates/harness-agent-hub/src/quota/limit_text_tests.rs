@@ -209,10 +209,10 @@ fn find_resets_at_parses_string_numeric_relative_and_preserves_absolute() {
     );
 
     // Genuine absolute epoch and ISO in resetsAt
-    let data = serde_json::json!({ "resetsAt": 1732450000 });
-    assert_eq!(find_resets_at(&data), Some(1732450000));
+    let data = serde_json::json!({ "resetsAt": 1_732_450_000 });
+    assert_eq!(find_resets_at(&data), Some(1_732_450_000));
     let data = serde_json::json!({ "resetsAt": "1732450000" });
-    assert_eq!(find_resets_at(&data), Some(1732450000));
+    assert_eq!(find_resets_at(&data), Some(1_732_450_000));
     let data = serde_json::json!({ "resetsAt": "2026-11-24T15:00:00Z" });
     assert_eq!(
         find_resets_at(&data),

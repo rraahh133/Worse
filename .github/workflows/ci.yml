@@ -16,6 +16,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # CI builds from scratch each run: incremental state and debug info only cost compile and link time.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
   size:
@@ -47,11 +51,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # No doc tests exist; `--lib --bins --tests` skips the doctest pass (harness-ui alone took ~45s).
+      # The release workflow builds the exe, so no extra build step here.
       - name: Test
         run: >-
-          cargo test --workspace
+          cargo test --workspace --lib --bins --tests
           --exclude harness-app --exclude harness-host --exclude harness-host-control
           --exclude harness-host-protocol --exclude harness-sidecar --exclude harness-protocol
-
-      - name: Quick build
-        run: cargo build -p harness-slint --profile quick --bins

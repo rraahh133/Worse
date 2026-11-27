@@ -47,6 +47,18 @@ impl Adapter {
             }
             _ => {}
         }
+        // 修复：工作行的计时只记当前打开会话，切走再回来就从 0 开始；这里为所有会话记下回合开始时间。
+        if let Some(session) = &event.session_id {
+            match &event.kind {
+                EventKind::TurnStarted { turn_id, .. } => {
+                    crate::turn_clock::started(session.as_str(), turn_id.as_str(), None);
+                }
+                EventKind::TurnFinished { .. } | EventKind::TurnPaused { .. } => {
+                    crate::turn_clock::ended(session.as_str());
+                }
+                _ => {}
+            }
+        }
         // 修复说明：重试/回退/编辑重发后端口会重新打开会话；hub 在快照之前已发布的本会话事件（TurnQueued、
         // TurnStarted…）仍在订阅缓冲里。若照常应用，TurnQueued 会以空映射覆盖快照建立的条目映射并重复添加用户
         // 气泡，之后的 MessageDelta 另起新助手行，快照里的助手行永远停在 Streaming。快照之前的事件已包含在快照中，丢弃。

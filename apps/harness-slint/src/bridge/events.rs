@@ -98,6 +98,7 @@ impl UiState {
             } => {
                 if self.is_active(&session) {
                     self.update_row(id, |row| row.status = turn_status(status));
+                    self.answer_media(id);
                     self.turn_ended(id);
                     // Generation speed of the turn, estimated from its text; an exact count may follow
                     // with the session meta.
@@ -194,9 +195,13 @@ impl UiState {
             }
             Event::Running { session, running } => {
                 if self.is_active(&session) {
-                    // A turn starts: its generation speed is counted from zero.
-                    if running && !self.window.get_running() {
-                        crate::speed::start(&self.window);
+                    // A turn starts: its generation speed is counted from zero. 修复：切回正在运行的会话时
+                    // 不再归零——计时和 tok/s 都按回合开始时间识别同一回合，继续原来的计数。
+                    if running {
+                        crate::turn_clock::ensure(&session);
+                        crate::speed::start(&self.window, crate::turn_clock::start_of(&session));
+                    } else {
+                        crate::turn_clock::ended(&session);
                     }
                     self.window.set_running(running);
                     // 新回合开始：上一次失败的横幅过时了。

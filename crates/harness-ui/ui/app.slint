@@ -37,6 +37,8 @@ import { ChatUi, FleetGroup, PaletteRow, ChipRow, ToolPart, OutputRow, UsagePart
 import { TextDialog, SchedulesDialog } from "./chat/turns.slint";
 import { CommandCenter } from "./chat/palette.slint";
 import { WhiteboardUi, WhiteboardDialog, WbStroke } from "./chat/whiteboard.slint";
+import { MediaUi, MediaViewer } from "./chat/media_viewer.slint";
+export { MediaUi }
 import { DockUi, OptionRow } from "./chat/dock.slint";
 import { GitUi, BranchRow, GraphRow, GitDialogs } from "./panels/gitops.slint";
 import { PanelGit } from "./panels/globals.slint";
@@ -69,6 +71,7 @@ export { SetupUi, SetupRow }
 export { ChatUi, FleetGroup, PaletteRow, ChipRow, ToolPart, OutputRow, UsagePart, PlanLimit, PlanSimple, PlanBar, ChangeRow, PlanRow, GroupRow, ScheduleRow, WhiteboardUi, WbStroke, DockUi, OptionRow, GitUi, BranchRow, GraphRow }
 export { SettingsUi, DiffUi, ConfigUi, DocUi, ShortcutsUi, AgentsUi, AccountRow, AgyAccountRow, ProviderRow, ProjectsUi, ArchiveUi, NavEntry, DiffLine, ResRow, FormField, ShortcutRow, AgentCard, ProjectRow, ArchiveRow, SelectOption, FallbackRow, Labels, RecallUi, RecallRow, GraphUi, DecisionUi, SkillsUi, SkillRow }
 export { QueueRow } from "models.slint";
+export { PluginsUi, PluginRow, PluginPart, MarketRow, ConnectorRow } from "settings/plugins_ui.slint";
 export { InstallUi } from "components/install_ui.slint";
 export { DraftUi, DraftProject } from "chat/draft_chips.slint";
 import { QueueRow } from "./models.slint";
@@ -645,6 +648,12 @@ export component AppWindow inherits Window {
 
         if ChatUi.schedules-open: SchedulesDialog { }
         if WhiteboardUi.open: WhiteboardDialog { }
+        if MediaUi.open: MediaViewer {
+            x: 0;
+            y: 0;
+            width: root.width;
+            height: root.height;
+        }
         if DockUi.picker-open != "" || root.picker-open: PickerScrim {
             x: 0;
             y: 0;

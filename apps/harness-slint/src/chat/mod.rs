@@ -40,6 +40,7 @@ pub use hooks::{
 };
 use hooks::{attachments_dir, chip_image, remove_image_chip};
 pub use links::open_link;
+pub(crate) use links::strip_location_suffix;
 pub use wire::install;
 
 /// `ZCode` `LONG_PASTE_TEXT_ATTACHMENT_CHAR_THRESHOLD` (`packages/ui/src/lib/chatAttachments.ts`).

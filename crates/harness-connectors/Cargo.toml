@@ -1,0 +1,26 @@
+[package]
+name = "harness-connectors"
+version = "0.1.0"
+description = "Connectors: remote MCP servers (catalog, OAuth login with PKCE and dynamic client registration, token store) and the stdio bridge every agent runs them through (docs/plans/connectors.md)."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+harness-agent-config = { path = "../harness-agent-config" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+base64 = { workspace = true }
+getrandom = "0.3"
+sha2 = "0.10"
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", default-features = false, features = ["fs", "io-std", "io-util", "macros", "net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

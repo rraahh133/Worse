@@ -1,0 +1,275 @@
+// In-app viewer for images and videos named in the transcript (no webview): a dark overlay with the picture
+// fitted to the window, previous / next through the row's media, and play / pause / seek for videos. Rust
+// (apps/harness-slint/src/media/) decodes images and video frames and is the only writer of this state.
+
+import { Theme } from "../theme/tokens.slint";
+import { Icons, Icon, Spinner, IconButton } from "../components/controls.slint";
+
+export global MediaUi {
+    in-out property <bool> open;
+    in property <string> name;
+    in property <string> path;
+    in property <bool> video;
+    // The image, or the current video frame.
+    in property <image> frame;
+    in property <bool> has-frame;
+    in property <bool> loading;
+    in property <string> error;
+    in property <bool> playing;
+    // 0..1 of the video duration.
+    in property <float> progress;
+    // "0:03 / 0:15"
+    in property <string> time;
+    // 1-based position in the gallery of the row it was opened from, and its size.
+    in property <int> index;
+    in property <int> count;
+    // Open the viewer on a local file (from a transcript strip or link).
+    callback view(string);
+    callback close();
+    callback toggle-play();
+    callback seek(float);
+    // -1 previous, +1 next.
+    callback step(int);
+    callback open-external();
+    callback reveal();
+}
+
+component ViewerButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <length> icon-size: 16px;
+    callback clicked();
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: ta.has-hover ? #ffffff26 : #ffffff12;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    animate background { duration: Theme.dur-hover; }
+    Icon {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: root.icon;
+        size: root.icon-size;
+        tint: #ffffffe6;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component MediaViewer inherits Rectangle {
+    background: #000000e0;
+    // Clicks on the backdrop close the viewer; clicks on the picture and controls do not.
+    TouchArea {
+        clicked => { MediaUi.close(); }
+    }
+    keys := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                MediaUi.close();
+                return accept;
+            }
+            if event.text == " " && MediaUi.video {
+                MediaUi.toggle-play();
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                MediaUi.step(-1);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                MediaUi.step(1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Picture area between the top bar and the video controls.
+    property <length> top-h: 56px;
+    property <length> bottom-h: MediaUi.video ? 64px : 24px;
+    property <length> area-w: root.width - 140px;
+    property <length> area-h: root.height - root.top-h - root.bottom-h - 16px;
+    property <float> ratio: MediaUi.has-frame ? MediaUi.frame.width / max(1, MediaUi.frame.height) : 1.6;
+    property <length> pic-w: min(root.area-w, root.area-h * root.ratio, MediaUi.has-frame && !MediaUi.video ? max(MediaUi.frame.width * 1px, 240px) : 100000px);
+    property <length> pic-h: root.pic-w / root.ratio;
+    pic := Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.top-h + (root.area-h - self.height) / 2 + 8px;
+        width: root.pic-w;
+        height: root.pic-h;
+        border-radius: 6px;
+        clip: true;
+        background: MediaUi.has-frame ? transparent : #ffffff0d;
+        TouchArea {
+            clicked => {
+                if MediaUi.video {
+                    MediaUi.toggle-play();
+                }
+            }
+        }
+        if MediaUi.has-frame: Image {
+            width: parent.width;
+            height: parent.height;
+            source: MediaUi.frame;
+            image-fit: contain;
+            accessible-role: image;
+            accessible-label: MediaUi.name;
+        }
+        if MediaUi.loading && !MediaUi.has-frame: Spinner {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            size: 28px;
+        }
+        if MediaUi.video && !MediaUi.playing && MediaUi.has-frame && MediaUi.error == "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 64px;
+            height: 64px;
+            border-radius: 32px;
+            background: #00000099;
+            Icon {
+                x: (parent.width - self.width) / 2 + 2px;
+                y: (parent.height - self.height) / 2;
+                source: Icons.play;
+                size: 26px;
+                tint: #ffffff;
+            }
+        }
+    }
+    if MediaUi.error != "": Text {
+        x: (root.width - self.width) / 2;
+        y: pic.y + pic.height + 12px;
+        width: min(root.width - 80px, 560px);
+        text: MediaUi.error;
+        color: #ffffffcc;
+        font-size: Theme.ui-sm;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    // Top bar: name, position, actions.
+    HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.top-h;
+        padding-left: 20px;
+        padding-right: 16px;
+        spacing: 8px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: MediaUi.name;
+                color: #ffffff;
+                font-size: Theme.ui-base;
+                font-weight: Theme.weight-semibold;
+                overflow: elide;
+            }
+            if MediaUi.count > 1: Text {
+                text: @tr("{0} of {1}", MediaUi.index, MediaUi.count);
+                color: #ffffff99;
+                font-size: Theme.ui-xs;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ViewerButton {
+                icon: Icons.folder-open;
+                label: @tr("Show in folder");
+                clicked => { MediaUi.reveal(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ViewerButton {
+                icon: Icons.external-link;
+                label: @tr("Open with default app");
+                clicked => { MediaUi.open-external(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ViewerButton {
+                icon: Icons.x;
+                label: @tr("Close");
+                clicked => { MediaUi.close(); }
+            }
+        }
+    }
+
+    // Previous / next.
+    if MediaUi.count > 1: ViewerButton {
+        x: 20px;
+        y: (root.height - self.height) / 2;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        icon: Icons.chevron-left;
+        icon-size: 20px;
+        label: @tr("Previous");
+        clicked => { MediaUi.step(-1); }
+    }
+    if MediaUi.count > 1: ViewerButton {
+        x: root.width - self.width - 20px;
+        y: (root.height - self.height) / 2;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        icon: Icons.chevron-right;
+        icon-size: 20px;
+        label: @tr("Next");
+        clicked => { MediaUi.step(1); }
+    }
+
+    // Video controls under the picture.
+    if MediaUi.video: HorizontalLayout {
+        x: (root.width - self.width) / 2;
+        y: root.height - root.bottom-h;
+        width: min(root.width - 80px, max(pic.width, 420px));
+        height: 44px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            ViewerButton {
+                icon: MediaUi.playing ? Icons.pause : Icons.play;
+                label: MediaUi.playing ? @tr("Pause") : @tr("Play");
+                clicked => { MediaUi.toggle-play(); }
+            }
+        }
+        track := Rectangle {
+            horizontal-stretch: 1;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: parent.width;
+                height: seek.has-hover ? 6px : 4px;
+                border-radius: 3px;
+                background: #ffffff33;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, MediaUi.progress));
+                    height: parent.height;
+                    border-radius: 3px;
+                    background: #ffffff;
+                }
+            }
+            seek := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { MediaUi.seek(max(0, min(1, self.mouse-x / max(1px, self.width)))); }
+            }
+        }
+        Text {
+            text: MediaUi.time;
+            color: #ffffffcc;
+            font-size: Theme.ui-sm;
+            font-family: Theme.mono-font;
+            vertical-alignment: center;
+        }
+    }
+}

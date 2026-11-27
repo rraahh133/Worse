@@ -1,0 +1,23 @@
+[package]
+name = "harness-plugins"
+version = "0.1.0"
+description = "Plugin store core: Claude Code plugin marketplaces (parse, git download), plugin components, install/uninstall write plans for every agent and the installed record (docs/plans/plugins.md)."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+harness-agent-config = { path = "../harness-agent-config" }
+harness-settings = { path = "../harness-settings" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["fs"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["fs", "macros", "rt"] }
+
+[lints]
+workspace = true

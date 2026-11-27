@@ -13,11 +13,67 @@ use crate::types::{McpServer, McpTransport};
 pub const OVERLAY_FILE: &str = "mcp.json";
 /// Reserved name of the built-in memory server (overlay entries with this name are ignored).
 pub const MEMORY_SERVER: &str = "harness-memory";
-pub const BUILTIN_SERVERS: [&str; 3] = [MEMORY_SERVER, "harness-delegate", "harness-computer"];
+/// Reserved name of the tool gateway that fronts overlay servers for agents that cannot take many tools.
+pub const GATEWAY_SERVER: &str = "harness-tools";
+/// Built-in Office documents server.
+pub const WORK_SERVER: &str = "harness-work";
+/// Built-in computer-use server.
+pub const COMPUTER_SERVER: &str = "harness-computer";
+pub const BUILTIN_SERVERS: [&str; 5] = [
+    MEMORY_SERVER,
+    "harness-delegate",
+    COMPUTER_SERVER,
+    GATEWAY_SERVER,
+    WORK_SERVER,
+];
+/// Built-in servers the user can switch off as plugins (`docs/plans/plugins.md` §3).
+pub const SWITCHABLE_BUILTINS: [&str; 2] = [WORK_SERVER, COMPUTER_SERVER];
+/// `{"disabled": [names]}` under the data dir: built-in plugins the user switched off.
+const BUILTINS_FILE: &str = "plugins/builtins.json";
 
 #[must_use]
 pub fn is_builtin(name: &str) -> bool {
     BUILTIN_SERVERS.contains(&name)
+}
+
+/// Built-in servers switched off by the user (missing or unreadable file = none).
+pub async fn disabled_builtins(data_dir: &Path) -> Vec<String> {
+    let Ok(bytes) = tokio::fs::read(data_dir.join(BUILTINS_FILE)).await else {
+        return Vec::new();
+    };
+    serde_json::from_slice::<Value>(&bytes)
+        .ok()
+        .and_then(|v| v.get("disabled").cloned())
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|n| SWITCHABLE_BUILTINS.contains(&n.as_str()))
+        .collect()
+}
+
+/// Switches a built-in server on or off for new sessions.
+///
+/// # Errors
+///
+/// Not a switchable built-in, I/O.
+pub async fn set_builtin_enabled(data_dir: &Path, name: &str, on: bool) -> Result<()> {
+    if !SWITCHABLE_BUILTINS.contains(&name) {
+        return Err(crate::ConfigError::invalid(format!(
+            "{name} cannot be switched off"
+        )));
+    }
+    let mut disabled = disabled_builtins(data_dir).await;
+    disabled.retain(|n| n != name);
+    if !on {
+        disabled.push(name.to_owned());
+    }
+    let path = data_dir.join(BUILTINS_FILE);
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let text = format!("{}\n", json!({ "disabled": disabled }));
+    harness_settings::fsx::write_atomic(&path, text.as_bytes()).await?;
+    Ok(())
 }
 
 /// Transports the agent advertised in `agentCapabilities.mcpCapabilities` (stdio is always supported).
@@ -38,12 +94,24 @@ pub async fn acp_servers(
     agent_id: &str,
     caps: AcpMcpCapabilities,
 ) -> Result<Vec<Value>> {
+    Ok(servers(data_dir, agent_id)
+        .await?
+        .iter()
+        .filter_map(|s| to_acp(s, caps))
+        .collect())
+}
+
+/// Enabled overlay servers for `agent_id` (built-in names skipped), as parsed entries.
+///
+/// # Errors
+///
+/// Unreadable or invalid `mcp.json`.
+pub async fn servers(data_dir: &Path, agent_id: &str) -> Result<Vec<McpServer>> {
     let servers = list_json(&data_dir.join(OVERLAY_FILE), Dialect::Overlay).await?;
     Ok(servers
-        .iter()
+        .into_iter()
         .filter(|s| s.enabled != Some(false) && !is_builtin(&s.name))
         .filter(|s| s.agents.is_empty() || s.agents.iter().any(|a| a == agent_id))
-        .filter_map(|s| to_acp(s, caps))
         .collect())
 }
 

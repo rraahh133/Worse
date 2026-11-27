@@ -165,7 +165,7 @@ pub(super) fn select_renderer() {
         Ok("femtovg") => &["femtovg", "skia-software", "skia", "software"],
         Ok("skia" | "gpu") => &["skia", "skia-software", "femtovg", "software"],
         Ok("skia-software" | "cpu") => &["skia-software", "skia", "femtovg", "software"],
-        // No override: Settings › General › GPU rendering decides (off by default).
+        // No override: Settings › General › GPU rendering decides (on by default).
         _ if gpu_rendering_setting(&harness_home()) => {
             &["skia", "skia-software", "femtovg", "software"]
         }
@@ -202,7 +202,7 @@ pub(crate) fn gpu_rendering() -> bool {
 
 /// `general.gpuRendering` of the settings file. The renderer is chosen before the window and the settings
 /// store exist, so this reads the file directly: `<base>/settings.json`, or the one in the relocated data
-/// directory named by `<base>/relocated.json`. Anything unreadable means "off".
+/// directory named by `<base>/relocated.json`. A missing or unreadable value means "on" (the default).
 pub(super) fn gpu_rendering_setting(base: &Path) -> bool {
     let read = |path: &Path| -> Option<serde_json::Value> {
         serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
@@ -216,7 +216,7 @@ pub(super) fn gpu_rendering_setting(base: &Path) -> bool {
             v.pointer("/general/gpuRendering")
                 .and_then(serde_json::Value::as_bool)
         })
-        .unwrap_or(false)
+        .unwrap_or(true)
 }
 
 /// Gates only (automation builds): `HARNESS_UI_WINDOW_SIZE=<w>x<h>` opens the window at that logical size, so the
@@ -284,6 +284,8 @@ pub(super) fn helper_mode() -> Option<ExitCode> {
     match mode.as_str() {
         helpers::FLAG_MEMORY_MCP => Some(helpers::run_memory_mcp(args)),
         helpers::FLAG_DELEGATE => Some(helpers::run_delegate_mcp()),
+        helpers::FLAG_TOOL_GATEWAY => Some(helpers::run_tool_gateway()),
+        helpers::FLAG_CONNECTOR_MCP => Some(helpers::run_connector_mcp(args)),
         helpers::FLAG_API_AGENT => Some(harness_api_agent::run()),
         helpers::FLAG_COMPUTER_MCP => Some(computer_mcp::run()),
         helpers::FLAG_WORK_MCP => Some(harness_work::run_mcp()),

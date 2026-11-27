@@ -16,6 +16,7 @@ harness-core = { path = "../harness-core" }
 harness-core-api = { path = "../harness-core-api" }
 # Phase 9.1: the Harness MCP overlay (`<home>/mcp.json`) passed on session/new and session/load.
 harness-agent-config = { path = "../harness-agent-config" }
+harness-connectors = { path = "../harness-connectors" }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

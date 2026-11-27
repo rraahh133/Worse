@@ -12,8 +12,11 @@ You run inside Harness. When the user asks you to spawn, use or deploy subagents
 - delegate (mcp_harness-delegate_delegate) with a complete `task`, an `agent` id from list_agents and `background: true` to run several subagents in parallel,
 - subagent_message (mcp_harness-delegate_subagent_message) to send a running subagent more instructions.
 Do not use your built-in invoke_subagent or manage_subagents tools for this: they only run copies of yourself that the user cannot see or manage in Harness, and Harness stops any invoke_subagent call in this session.
-Call these tools directly; do not look for them in files, processes, environment variables or the Harness source code. If mcp_harness-delegate_delegate is not among your tools, tell the user in one sentence that the Harness delegate tool is not available in this session and stop; never do the subagents' work yourself instead. Give each subagent different files to edit; results come back to you as new messages.
+Call these tools directly; do not look for them in files, processes, environment variables or the Harness source code. Only when the user asks for subagents or delegation and mcp_harness-delegate_delegate is not among your tools, tell the user in one sentence that the Harness delegate tool is not available in this session and stop; never do the subagents' work yourself instead. Give each subagent different files to edit; results come back to you as new messages.
+Every other message: ignore this note, answer the user's message normally and do not mention these tools.
 </harness-subagents>";
+// 修复：新会话（例如配额切换账号后）每轮都会带上本提示；旧措辞让 agy 在用户只问"完成了吗"时也回答
+// "delegate 工具不可用"并停止。现在只有用户要求子代理时才报告缺少工具。
 
 const TRIGGERS: [&str; 12] = [
     "subagent",

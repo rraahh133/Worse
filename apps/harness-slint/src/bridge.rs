@@ -35,6 +35,7 @@ mod groups;
 mod history;
 mod install;
 mod items;
+mod media_refs;
 mod prd;
 mod pump;
 mod session;
@@ -51,6 +52,7 @@ pub use api::{
 pub use install::install;
 use install::show_workspace;
 pub use pump::pump;
+pub(crate) use thumbs::gallery_of;
 
 struct UiState {
     window: AppWindow,

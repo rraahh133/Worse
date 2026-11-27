@@ -49,6 +49,20 @@ impl Hub {
             merged.retain(|c| !agent_commands.iter().any(|a| a.name == c.name));
             merged.extend(agent_commands.iter().cloned());
         }
+        if super::shared_commands::needs_shared(&self.ctx, &agent) {
+            for (command, path) in super::shared_commands::shared_commands(&self.ctx).await {
+                if merged.iter().any(|c| c.name == command.name) {
+                    continue;
+                }
+                merged.push(SlashCommand {
+                    name: command.name,
+                    description: command.description.unwrap_or_default(),
+                    input_hint: command.argument_hint,
+                    source: CommandSource::User,
+                    path: Some(path.to_string_lossy().into_owned()),
+                });
+            }
+        }
         let skills = harness_skills(&self.ctx).await;
         merged.retain(|c| !skills.iter().any(|s| s.name == c.name));
         merged.extend(skills.into_iter().map(|s| SlashCommand {

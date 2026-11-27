@@ -1,0 +1,220 @@
+// Settings › Plugins (docs/plans/plugins.md §2, docs/plans/connectors.md): a Claude-style "Customize" screen.
+// Connectors (remote MCP servers the user signs in to) and plugins (Claude Code marketplaces) share one compact row
+// look. State lives in `PluginsUi` (plugins_ui.slint), Rust is its only writer; this page only calls callbacks.
+import { Theme } from "../theme/tokens.slint";
+import { Icons, Icon, Spinner, Button, MenuShell, MenuItem, Dialog } from "../components/controls.slint";
+import { PageHeader, Group, RowDivider, SearchField, TextField, Switch, Badge, StatusLine, SegmentedControl, SetButton } from "parts.slint";
+import { PluginsUi, PluginRow, ConnectorRow } from "plugins_ui.slint";
+import { PluginArt, Tile, RowMenu, ConnectorActions, ConnectorRowView, PluginActions, PluginRowView, ListHeader, CategoryChip, EmptyNote } from "plugins_rows.slint";
+import { AddMenu, AddConnectorDialog, ClientDialog, PluginDetailView } from "plugins_dialogs.slint";
+
+export component PluginsPage inherits Rectangle {
+    in property <bool> stacked;
+    property <string> market-input;
+    VerticalLayout {
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            PageHeader {
+                horizontal-stretch: 1;
+                title: @tr("Plugins");
+                description: @tr("Connect apps and install plugins. Every agent gets them.");
+            }
+            VerticalLayout {
+                alignment: start;
+                HorizontalLayout {
+                    spacing: 8px;
+                    if PluginsUi.loading: Spinner { size: 16px; }
+                    AddMenu {
+                        add-connector => { PluginsUi.add-open = true; }
+                        add-marketplace => { PluginsUi.set-section("plugins"); PluginsUi.set-tab("marketplaces"); }
+                    }
+                }
+            }
+        }
+        if PluginsUi.detail-open: PluginDetailView { }
+        if !PluginsUi.detail-open: VerticalLayout {
+            spacing: 12px;
+            // 修复：顶部原来是两组分段控件 + 零散的 "Marketplaces" + 搜索框，高度不一；
+            // 现在只保留 Connectors/Plugins 一组、搜索框和一个 ⋯ 菜单，同一高度居中对齐。
+            HorizontalLayout {
+                height: 32px; spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    SegmentedControl {
+                        label: @tr("Connectors or plugins");
+                        current: PluginsUi.section;
+                        options: [
+                            { id: "connectors", label: @tr("Connectors") },
+                            { id: "plugins", label: @tr("Plugins") },
+                        ];
+                        select(id) => {
+                            PluginsUi.set-section(id);
+                            PluginsUi.set-tab("");
+                        }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                SearchField {
+                    width: 260px; height: 32px; horizontal-stretch: 0;
+                    placeholder: PluginsUi.section == "connectors" ? @tr("Search connectors…") : @tr("Search plugins…");
+                    text <=> PluginsUi.query;
+                    edited(q) => { PluginsUi.search(q); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    RowMenu {
+                        label: @tr("More plugin options");
+                        items: 2;
+                        MenuItem {
+                            text: @tr("Manage marketplaces"); show-check: false;
+                            clicked => { PluginsUi.set-section("plugins"); PluginsUi.set-tab("marketplaces"); }
+                        }
+                        MenuItem { text: @tr("Refresh"); show-check: false; clicked => { PluginsUi.refresh(); } }
+                    }
+                }
+            }
+            if PluginsUi.tab != "marketplaces" && PluginsUi.categories.length > 0: Flickable {
+                height: 28px; content-width: chips.preferred-width; content-height: 28px;
+                chips := HorizontalLayout {
+                    spacing: 6px;
+                    CategoryChip { label: @tr("All"); active: PluginsUi.category == ""; clicked => { PluginsUi.set-category(""); } }
+                    for c in PluginsUi.categories: CategoryChip {
+                        label: c; active: PluginsUi.category == c; clicked => { PluginsUi.set-category(c); }
+                    }
+                }
+            }
+            if PluginsUi.section == "connectors": VerticalLayout {
+                spacing: 12px;
+                if PluginsUi.tab != "discover": VerticalLayout {
+                    spacing: 2px;
+                    ListHeader { title: @tr("Yours"); count: PluginsUi.connectors-yours.length; }
+                    if PluginsUi.connectors-yours.length == 0: EmptyNote {
+                        text: PluginsUi.loading ? @tr("Loading connectors…") : @tr("No connectors yet. Add one from the top right.");
+                    }
+                    for c in PluginsUi.connectors-yours: ConnectorRowView { item: c; }
+                }
+                if PluginsUi.tab != "yours": VerticalLayout {
+                    spacing: 2px;
+                    ListHeader {
+                        title: @tr("More you can add");
+                        count: PluginsUi.connectors.length + PluginsUi.connectors-hidden;
+                        show-all: PluginsUi.connectors-hidden > 0;
+                        total: PluginsUi.connectors.length + PluginsUi.connectors-hidden;
+                        more => { PluginsUi.show-more(); }
+                    }
+                    if PluginsUi.connectors.length == 0: EmptyNote {
+                        text: PluginsUi.loading ? @tr("Loading connectors…") : @tr("No connectors match.");
+                    }
+                    for c in PluginsUi.connectors: ConnectorRowView { item: c; }
+                }
+            }
+            if PluginsUi.section == "plugins" && PluginsUi.tab != "marketplaces": VerticalLayout {
+                spacing: 12px;
+                if PluginsUi.tab != "discover": VerticalLayout {
+                    spacing: 2px;
+                    ListHeader { title: @tr("Yours"); count: PluginsUi.yours.length; }
+                    if PluginsUi.yours.length == 0: EmptyNote {
+                        text: PluginsUi.loading ? @tr("Loading marketplaces…") : @tr("Nothing installed yet.");
+                    }
+                    for p in PluginsUi.yours: PluginRowView { item: p; }
+                }
+                if PluginsUi.tab != "yours": VerticalLayout {
+                    spacing: 2px;
+                    ListHeader {
+                        title: @tr("More you can add");
+                        count: PluginsUi.rows.length + PluginsUi.hidden;
+                        show-all: PluginsUi.hidden > 0;
+                        total: PluginsUi.rows.length + PluginsUi.hidden;
+                        more => { PluginsUi.show-more(); }
+                    }
+                    if PluginsUi.rows.length == 0: EmptyNote {
+                        text: PluginsUi.loading ? @tr("Loading marketplaces…") : @tr("No plugins match.");
+                    }
+                    for p in PluginsUi.rows: PluginRowView { item: p; }
+                }
+            }
+            if PluginsUi.section == "plugins" && PluginsUi.tab == "marketplaces": VerticalLayout {
+                spacing: 12px;
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: @tr("Back to plugins"); size: "xs"; variant: "ghost";
+                        clicked => { PluginsUi.set-tab(""); }
+                    }
+                }
+                Group {
+                    title: @tr("Configured marketplaces");
+                    for m[idx] in PluginsUi.markets: VerticalLayout {
+                        if idx > 0: RowDivider { }
+                        HorizontalLayout {
+                            padding: 12px; spacing: 12px;
+                            VerticalLayout {
+                                horizontal-stretch: 1; spacing: 3px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: m.name != "" ? m.name : m.source;
+                                        font-size: Theme.ui-caption; font-weight: Theme.weight-medium; color: Theme.foreground; overflow: elide;
+                                    }
+                                    Text {
+                                        text: @tr("{0} plugins", m.count); font-size: Theme.ui-xs; color: Theme.muted;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text { text: m.source; font-family: Theme.mono-font; font-size: Theme.ui-xs; color: Theme.muted; overflow: elide; }
+                                if m.error != "": Text { text: m.error; font-size: Theme.ui-xs; color: Theme.destructive; wrap: word-wrap; }
+                            }
+                            if !m.default: VerticalLayout {
+                                alignment: center;
+                                Button { text: @tr("Remove"); size: "xs"; variant: "ghost"; clicked => { PluginsUi.remove-market(m.source); } }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    TextField {
+                        label: @tr("Marketplace source");
+                        placeholder: @tr("owner/repo, https://… git URL or local folder");
+                        text <=> root.market-input;
+                        accepted(src) => {
+                            if src != "" {
+                                PluginsUi.add-market(src);
+                                root.market-input = "";
+                            }
+                        }
+                    }
+                    Button {
+                        text: @tr("Add"); size: "sm"; variant: "primary"; enabled: root.market-input != "";
+                        clicked => {
+                            PluginsUi.add-market(root.market-input);
+                            root.market-input = "";
+                        }
+                    }
+                }
+            }
+        }
+        StatusLine { text: PluginsUi.status; error: PluginsUi.status-error; }
+    }
+}
+
+// 修复：对话框原来放在插件页里面，高度被页面（内容少时很矮）限制，底部按钮被裁掉；
+// 现在由设置外壳（shell.slint）在整个设置窗口上层显示。
+export component PluginsDialogs inherits Rectangle {
+    if PluginsUi.add-open: AddConnectorDialog {
+        width: root.width;
+        height: root.height;
+        cancel => { PluginsUi.add-open = false; }
+        submit(name, url) => {
+            PluginsUi.add-connector(name, url);
+            PluginsUi.add-open = false;
+        }
+    }
+    if PluginsUi.client-open: ClientDialog {
+        width: root.width;
+        height: root.height;
+        cancel => { PluginsUi.cancel-client(); }
+        submit(id, secret) => { PluginsUi.submit-client(PluginsUi.client-for.id, id, secret); }
+    }
+}

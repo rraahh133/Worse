@@ -207,44 +207,64 @@ impl HubCtx {
         session: &SessionId,
     ) -> Value {
         let mut servers = vec![self.memory_mcp_server(cwd, session, &self.display_name(agent))];
-        if let Some(delegate) =
-            self.delegate_mcp_server(session, crate::agy_ops::is_agy(self, agent))
-        {
-            servers.push(delegate);
+        let top_level = !self.subagents.is_child(session) && !self.routers.is_router(session);
+        if !top_level || crate::orchestra::may_delegate(self, agent).await {
+            if let Some(delegate) =
+                self.delegate_mcp_server(session, crate::agy_ops::is_agy(self, agent))
+            {
+                servers.push(delegate);
+            }
         }
+        let off = harness_agent_config::overlay::disabled_builtins(&self.config.home).await;
+        let on = |name: &str| !off.iter().any(|n| n == name);
         if matches!(
             self.config.helpers,
             crate::helpers::HelperLaunch::SelfExe { .. }
         ) {
             let helper = crate::helpers::Helper::Computer;
-            servers.push(json!({
-                "name": "harness-computer",
-                "command": self.config.helpers.program(helper).to_string_lossy(),
-                "args": self.config.helpers.args(helper),
-                "env": [
-                    {"name": "HARNESS_HOME", "value": self.config.home.to_string_lossy()},
-                    {"name": "HARNESS_MACHINE_SESSION", "value": session.as_str()}
-                ]
+            // 插件页可关闭内置的 Office/电脑操作服务器：关闭后新会话不再带上它们。
+            servers.extend(on(harness_agent_config::overlay::COMPUTER_SERVER).then(|| {
+                json!({
+                    "name": "harness-computer",
+                    "command": self.config.helpers.program(helper).to_string_lossy(),
+                    "args": self.config.helpers.args(helper),
+                    "env": [
+                        {"name": "HARNESS_HOME", "value": self.config.home.to_string_lossy()},
+                        {"name": "HARNESS_MACHINE_SESSION", "value": session.as_str()}
+                    ]
+                })
             }));
             let work_helper = crate::helpers::Helper::Work;
-            servers.push(json!({
-                "name": "harness-work",
-                "command": self.config.helpers.program(work_helper).to_string_lossy(),
-                "args": self.config.helpers.args(work_helper),
-                "env": [
-                    {"name": "HARNESS_HOME", "value": self.config.home.to_string_lossy()},
-                    {"name": "HARNESS_WORK_PROJECT", "value": cwd}
-                ]
+            servers.extend(on(harness_agent_config::overlay::WORK_SERVER).then(|| {
+                json!({
+                    "name": "harness-work",
+                    "command": self.config.helpers.program(work_helper).to_string_lossy(),
+                    "args": self.config.helpers.args(work_helper),
+                    "env": [
+                        {"name": "HARNESS_HOME", "value": self.config.home.to_string_lossy()},
+                        {"name": "HARNESS_WORK_PROJECT", "value": cwd}
+                    ]
+                })
             }));
         }
         let caps = harness_agent_config::overlay::AcpMcpCapabilities {
             http: caps.0,
             sse: caps.1,
         };
-        match harness_agent_config::overlay::acp_servers(&self.config.home, agent.as_str(), caps)
-            .await
-        {
-            Ok(extra) => servers.extend(extra),
+        let connector = crate::helpers::Helper::Connector;
+        let connectors = harness_connectors::servers(
+            &self.config.home,
+            self.config.helpers.program(connector),
+            &self.config.helpers.args(connector),
+        )
+        .await;
+        match harness_agent_config::overlay::servers(&self.config.home, agent.as_str()).await {
+            Ok(mut extra) => {
+                // 连接器（远程 MCP）以 stdio 桥接进程提供：令牌只在桥接进程里，所有 agent 都能用。
+                extra.retain(|s| !connectors.iter().any(|c| c.name == s.name));
+                extra.extend(connectors);
+                servers.extend(self.overlay_entries(agent, &extra, caps));
+            }
             // 叠加配置损坏时不能让轮次失败：只记录告警并仅传 harness-memory（spec §9.1.4）。
             Err(error) => tracing::warn!(%error, "ignoring unreadable MCP overlay"),
         }
@@ -259,6 +279,43 @@ impl HubCtx {
             }
         }
         Value::Array(servers)
+    }
+
+    /// Overlay servers in ACP shape. agy and API provider agents drop or choke on hundreds of tools, so their
+    /// stdio servers go behind one `harness-tools` gateway (`find_tools` / `call_tool`); others get them direct.
+    // 修复：overlay 里的 dokploy 等服务器有数百个工具，agy 只加载了一部分，连 harness-delegate 的工具也被挤掉。
+    fn overlay_entries(
+        &self,
+        agent: &AgentId,
+        servers: &[harness_agent_config::McpServer],
+        caps: harness_agent_config::overlay::AcpMcpCapabilities,
+    ) -> Vec<Value> {
+        let gated = crate::agy_ops::is_agy(self, agent)
+            || self
+                .specs
+                .get(agent)
+                .is_some_and(crate::providers::is_provider);
+        let stdio = |s: &&harness_agent_config::McpServer| {
+            s.transport == harness_agent_config::McpTransport::Stdio
+        };
+        let mut out: Vec<Value> = servers
+            .iter()
+            .filter(|s| !(gated && stdio(s)))
+            .filter_map(|s| harness_agent_config::overlay::to_acp(s, caps))
+            .collect();
+        if gated && servers.iter().any(|s| stdio(&s)) {
+            let helper = crate::helpers::Helper::ToolGateway;
+            out.push(json!({
+                "name": harness_agent_config::overlay::GATEWAY_SERVER,
+                "command": self.config.helpers.program(helper).to_string_lossy(),
+                "args": self.config.helpers.args(helper),
+                "env": [
+                    {"name": "HARNESS_HOME", "value": self.config.home.to_string_lossy()},
+                    {"name": "HARNESS_GATEWAY_AGENT", "value": agent.as_str()}
+                ]
+            }));
+        }
+        out
     }
 
     /// ACP `McpServer` entry of `harness-delegate` (§9.8). Subagents get the `child` role, or `nested` (delegate tools

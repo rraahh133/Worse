@@ -12,7 +12,7 @@ const RUNNABLE: &[&str] = &[
 ];
 
 /// Strips `:12`, `:12-20` and `:L12-L20` location suffixes; a lone drive letter (`C:`) stays.
-pub(super) fn strip_location_suffix(mut path: &str) -> &str {
+pub(crate) fn strip_location_suffix(mut path: &str) -> &str {
     let is_line = |value: &str| {
         let value = value.strip_prefix('L').unwrap_or(value);
         !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit())
@@ -36,6 +36,17 @@ pub(super) fn strip_location_suffix(mut path: &str) -> &str {
 /// Opens `target` unless it is runnable; a runnable file reveals its folder instead.
 fn open_safe(target: &str) {
     let plain = strip_location_suffix(target);
+    if crate::media::is_media(plain) {
+        // Images / videos open in the in-app viewer instead of an outside program.
+        let full = if Path::new(plain).is_absolute() {
+            Some(PathBuf::from(plain))
+        } else {
+            with_state(|s| s.workspace.clone()).map(|w| workspace_path(&w, plain))
+        };
+        if let Some(full) = full.filter(|p| p.is_file()) {
+            return crate::media::view(&full.to_string_lossy());
+        }
+    }
     let runnable = Path::new(plain)
         .extension()
         .and_then(|ext| ext.to_str())

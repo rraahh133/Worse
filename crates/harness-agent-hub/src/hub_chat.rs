@@ -28,6 +28,7 @@ use crate::util::{new_id, now_ms};
 mod commands;
 mod find;
 mod organize;
+pub(crate) mod shared_commands;
 mod turn_actions;
 
 const COMMANDS_PREFIX: &str = "agent_commands:";

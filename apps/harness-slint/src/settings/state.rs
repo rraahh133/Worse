@@ -146,6 +146,7 @@ impl State {
                 self.refresh_projects();
             }
             "archive" => self.refresh_archive(0),
+            "plugins" => crate::plugins::open(),
             concept if concept_of(concept).is_some() => {
                 let cfg = self.window.global::<ConfigUi>();
                 cfg.set_concept(sv(concept));

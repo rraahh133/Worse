@@ -14,11 +14,22 @@ export component WorkingLine inherits Rectangle {
     height: 26px;
     accessible-role: text;
     accessible-label: root.label + " " + root.secs + " seconds";
+    // 修复：原来是本地每秒 +1，切换会话后工作行重建、从 0 开始；改为读回合真正开始以来的秒数（未知时才自增）。
+    function sync() {
+        let at = ChatUi.turn-secs();
+        root.secs = at >= 0 ? at : root.secs + 1;
+    }
+    init => {
+        let at = ChatUi.turn-secs();
+        if at >= 0 {
+            root.secs = at;
+        }
+    }
     Timer {
         interval: 1s;
         running: true;
         triggered => {
-            root.secs += 1;
+            root.sync();
             ChatUi.speed-tick();
         }
     }

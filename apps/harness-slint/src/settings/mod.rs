@@ -75,7 +75,8 @@ const NAV: &[(&str, i32)] = &[
     ("mcp", 1),
     ("skill", 1),
     ("command", 1),
-    ("hook", 1),
+    ("plugins", 1),
+    // Hooks page stays built but is hidden from the nav (user request); add ("hook", 1) back to show it.
     ("projects", 2),
     ("archive", 2),
     ("import", 2),

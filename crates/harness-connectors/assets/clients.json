@@ -1,0 +1,7 @@
+{
+  "_comment": "OAuth clients Harness ships for authorization servers without dynamic client registration, keyed by the server host. Desktop-app clients: Google treats their secret as not confidential (RFC 8252). Forks put their own client here; an empty clientId means none.",
+  "accounts.google.com": {
+    "clientId": "1075300006024-akip9e1ojphpa1h05b6h4ovdh0muq80i.apps.googleusercontent.com",
+    "clientSecret": ""
+  }
+}

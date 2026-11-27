@@ -22,6 +22,10 @@ pub const FLAG_DELEGATE: &str = "--delegate";
 pub const FLAG_API_AGENT: &str = "--api-agent";
 pub const FLAG_COMPUTER_MCP: &str = "--computer-mcp";
 pub const FLAG_WORK_MCP: &str = "--work-mcp";
+/// Mode flag of the `harness-tools` gateway in front of the overlay MCP servers (`<exe> --tool-gateway`).
+pub const FLAG_TOOL_GATEWAY: &str = "--tool-gateway";
+/// Mode flag of a connector bridge (`<exe> --connector-mcp <id>`, `docs/plans/connectors.md`).
+pub const FLAG_CONNECTOR_MCP: &str = harness_connectors::FLAG_CONNECTOR_MCP;
 
 /// A helper process Harness starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +39,10 @@ pub enum Helper {
     Computer,
     /// Work edition MCP server (`work_*` tools).
     Work,
+    /// `harness-tools`: `find_tools` / `call_tool` over the overlay servers.
+    ToolGateway,
+    /// Bridge to one connected remote MCP server.
+    Connector,
 }
 
 /// How helpers are launched.
@@ -108,7 +116,12 @@ impl HelperLaunch {
             (Self::SelfExe { program }, _) => program,
             (
                 Self::Separate { memory_mcp, .. },
-                Helper::MemoryMcp | Helper::Delegate | Helper::Computer | Helper::Work,
+                Helper::MemoryMcp
+                | Helper::Delegate
+                | Helper::Computer
+                | Helper::Work
+                | Helper::ToolGateway
+                | Helper::Connector,
             ) => memory_mcp,
             (Self::Separate { api_agent, .. }, Helper::ApiAgent) => api_agent,
         }
@@ -122,6 +135,8 @@ impl HelperLaunch {
             (_, Helper::Delegate) => Some(FLAG_DELEGATE),
             (Self::SelfExe { .. }, Helper::ApiAgent) => Some(FLAG_API_AGENT),
             (_, Helper::Computer) => Some(FLAG_COMPUTER_MCP),
+            (_, Helper::ToolGateway) => Some(FLAG_TOOL_GATEWAY),
+            (_, Helper::Connector) => Some(FLAG_CONNECTOR_MCP),
             (Self::SelfExe { .. }, Helper::Work) => Some(FLAG_WORK_MCP),
             (Self::Separate { .. }, Helper::MemoryMcp | Helper::ApiAgent | Helper::Work) => None,
         };
@@ -192,6 +207,71 @@ pub fn run_delegate_mcp() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("harness delegate: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Connector bridge over stdio; `args` = `[<connector id>]`.
+#[must_use = "return the exit code from main"]
+pub fn run_connector_mcp(args: impl IntoIterator<Item = String>) -> ExitCode {
+    harness_connectors::bridge::run(args)
+}
+
+/// `harness-tools` gateway over stdio: fronts the stdio overlay servers of `HARNESS_GATEWAY_AGENT`, read from
+/// `<HARNESS_HOME>/mcp.json` here so no server env passes through the agent.
+#[must_use = "return the exit code from main"]
+pub fn run_tool_gateway() -> ExitCode {
+    let home = match env_path("HARNESS_HOME") {
+        Some(home) => home,
+        None => match crate::config::HubConfig::from_env() {
+            Ok(config) => config.home,
+            Err(error) => {
+                eprintln!("harness tool-gateway: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    let agent = std::env::var("HARNESS_GATEWAY_AGENT").unwrap_or_default();
+    let servers = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())
+        .and_then(|rt| {
+            rt.block_on(harness_agent_config::overlay::servers(&home, &agent))
+                .map_err(|e| e.to_string())
+        });
+    let servers = match servers {
+        Ok(mut servers) => {
+            // 连接器也经网关提供给 agy/API 提供商；本进程就是 Harness 可执行文件。
+            if let Ok(exe) = std::env::current_exe() {
+                let launch = HelperLaunch::SelfExe { program: exe };
+                let args = launch.args(Helper::Connector);
+                let connectors = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map(|rt| {
+                        rt.block_on(harness_connectors::servers(
+                            &home,
+                            launch.program(Helper::Connector),
+                            &args,
+                        ))
+                    })
+                    .unwrap_or_default();
+                servers.extend(connectors);
+            }
+            servers
+        }
+        Err(error) => {
+            eprintln!("harness tool-gateway: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut gateway = crate::tool_gateway::Gateway::new(servers);
+    match gateway.serve(BufReader::new(io::stdin().lock()), io::stdout().lock()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("harness tool-gateway: {error}");
             ExitCode::FAILURE
         }
     }

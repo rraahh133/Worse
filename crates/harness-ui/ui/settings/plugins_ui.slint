@@ -1,0 +1,167 @@
+// Plugins & connectors state (docs/plans/plugins.md §2, docs/plans/connectors.md) shared between
+// `ui/settings/plugins.slint` and `apps/harness-slint/src/plugins/`. Rust is the only writer of the models; the
+// page calls callbacks. A plugin is addressed by its key "<marketplace>/<name>" (built-ins use "builtin/<name>");
+// a connector by its id.
+
+export struct PluginRow {
+    key: string,
+    name: string,
+    // Display name (displayName or name).
+    title: string,
+    description: string,
+    category: string,
+    author: string,
+    marketplace: string,
+    version: string,
+    installed: bool,
+    // Installed and switched on.
+    enabled: bool,
+    // A newer revision than the installed one is available.
+    update: bool,
+    // An install / uninstall / toggle for this plugin is running.
+    busy: bool,
+    // False when Harness cannot install anything of it (language-server or hooks only, unsupported source).
+    installable: bool,
+    // Shipped inside Harness (Office documents, Computer use): installing only switches it on.
+    builtin: bool,
+    // Agents it reached, e.g. "Claude Code, Codex, all agents (MCP)"; empty when not installed.
+    reach: string,
+    // Short reason shown when not installable or needing setup.
+    note: string,
+    // Logo; when `has-icon` is false show a letter tile (first letter of `title`).
+    icon: image,
+    has-icon: bool,
+    // From the official Anthropic marketplace or shipped with Harness.
+    verified: bool,
+}
+
+// One component in the detail view.
+export struct PluginPart {
+    // "skill" | "command" | "subagent" | "mcp" | "hook" | "lsp"
+    kind: string,
+    name: string,
+    detail: string,
+    // False for parts Harness does not install (hooks, language servers) or the user's own entry was kept.
+    installed: bool,
+}
+
+export struct MarketRow {
+    // As configured: "owner/repo", https URL or local folder.
+    source: string,
+    // From its marketplace.json; empty before the first fetch.
+    name: string,
+    count: int,
+    error: string,
+    // The default marketplace (cannot be removed).
+    default: bool,
+}
+
+// A remote MCP server the user signs in to once; every agent then gets its tools.
+export struct ConnectorRow {
+    id: string,
+    title: string,
+    // "by Google"
+    publisher: string,
+    description: string,
+    category: string,
+    url: string,
+    homepage: string,
+    icon: image,
+    has-icon: bool,
+    // Official server run by the service itself (catalog entry).
+    verified: bool,
+    // Added (and signed in, for OAuth connectors).
+    connected: bool,
+    // Connected and switched on (agents get it).
+    enabled: bool,
+    // Public server: connecting needs no sign-in.
+    public: bool,
+    // The service needs an OAuth client of the user's own (Google, Slack, GitHub...).
+    own-client: bool,
+    // Added by the user by URL.
+    custom: bool,
+    // Signing in / checking is running: show a spinner and "Waiting for browser…".
+    busy: bool,
+    // Error of the last attempt (red) or a hint; empty when none.
+    note: string,
+    note-error: bool,
+}
+
+export global PluginsUi {
+    // Top switch: "connectors" | "plugins"
+    in-out property <string> section: "connectors";
+    // "" = both lists (Yours, then More you can add) | "yours" | "discover" | "marketplaces" (plugins only)
+    in-out property <string> tab: "";
+    in-out property <string> query;
+    // "" = all categories.
+    in-out property <string> category;
+    // Categories of the current section.
+    in property <[string]> categories;
+    in property <bool> loading;
+    in property <string> status;
+    in property <bool> status-error;
+
+    // ---- Plugins (after search / category filter)
+    // Installed plugins.
+    in property <[PluginRow]> yours;
+    // Not installed (at most `limit`); `hidden` more behind "Show all".
+    in property <[PluginRow]> rows;
+    in property <int> hidden;
+    // Detail view
+    in property <bool> detail-open;
+    in property <PluginRow> detail;
+    in property <[PluginPart]> parts;
+    in property <[string]> notes;
+    in property <string> homepage;
+    in property <bool> detail-loading;
+    // Marketplaces
+    in property <[MarketRow]> markets;
+
+    // ---- Connectors (after search / category filter)
+    in property <[ConnectorRow]> connectors-yours;
+    in property <[ConnectorRow]> connectors;
+    in property <int> connectors-hidden;
+    // "Add custom connector" dialog; UI-only state (the dialogs sit in the settings shell, see shell.slint).
+    in-out property <bool> add-open;
+    // "Use your own OAuth client" dialog, opened by Rust when a service needs one.
+    in property <bool> client-open;
+    in property <ConnectorRow> client-for;
+    // The authorization server, e.g. "accounts.google.com".
+    in property <string> client-server;
+    // Step-by-step help text for creating the client (plain text, several lines).
+    in property <string> client-help;
+    // Redirect URI pattern the user must allow, e.g. "http://127.0.0.1 (any port)".
+    in property <string> client-redirect;
+    in property <string> client-docs-url;
+
+    callback search(string);
+    callback set-section(string);
+    callback set-tab(string);
+    callback set-category(string);
+    // "Show all" of the current section.
+    callback show-more();
+    callback refresh();
+    callback open-url(string);
+
+    // Plugins
+    callback open-detail(string);
+    callback close-detail();
+    // Install or update (key). Shows the diff dialog first.
+    callback install(string);
+    callback uninstall(string);
+    callback set-enabled(string, bool);
+    callback add-market(string);
+    callback remove-market(string);
+
+    // Connectors
+    // Sign in (opens the browser) or add a public one.
+    callback connect(string);
+    // Sign out and remove.
+    callback disconnect(string);
+    callback set-connector-enabled(string, bool);
+    // From the own-client dialog: (connector id, client id, client secret or "").
+    callback submit-client(string, string, string);
+    callback cancel-client();
+    // "Add custom connector": (name, https URL).
+    callback add-connector(string, string);
+}

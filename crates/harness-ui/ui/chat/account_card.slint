@@ -181,13 +181,23 @@ export component AccountCard inherits Rectangle {
                         }
                     }
                     MenuItem {
-                        text: @tr("Agents & usage");
+                        text: @tr("Agents");
                         show-check: false;
                         has-icon: true;
                         icon: Icons.bot;
                         clicked => {
                             acct-menu.close();
                             root.open-page("agents");
+                        }
+                    }
+                    MenuItem {
+                        text: @tr("Usage");
+                        show-check: false;
+                        has-icon: true;
+                        icon: Icons.clock;
+                        clicked => {
+                            acct-menu.close();
+                            root.open-page("usage");
                         }
                     }
                     MenuItem {

@@ -87,6 +87,27 @@ pub fn is_temp_file(path: &Path) -> bool {
         .is_some_and(|n| n.contains(".harness-tmp-"))
 }
 
+/// A file another process holds open for a moment (virus scanner, search indexer, sync client).
+fn is_transient_lock(error: &io::Error) -> bool {
+    // ERROR_ACCESS_DENIED (5), ERROR_SHARING_VIOLATION (32), ERROR_LOCK_VIOLATION (33).
+    cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33))
+}
+
+/// `rename`, retried for about two seconds while the file is briefly locked.
+async fn rename_retrying(from: &Path, to: &Path) -> io::Result<()> {
+    let mut attempt: u64 = 0;
+    loop {
+        match tokio::fs::rename(from, to).await {
+            // 修复：Windows 上杀毒软件/索引器刚扫描新写的文件时，rename 会报 os error 32；稍等重试即可。
+            Err(e) if is_transient_lock(&e) && attempt < 12 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(25 * attempt)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Writes `contents` atomically: temp file in the same directory → flush + fsync → rename over `path`.
 /// Parent directories are created. Readers see either the old or the new content, never a partial file.
 ///
@@ -107,7 +128,7 @@ pub async fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         file.flush().await?;
         file.sync_all().await?;
         drop(file);
-        tokio::fs::rename(&tmp, path).await
+        rename_retrying(&tmp, path).await
     }
     .await;
     if result.is_err() {

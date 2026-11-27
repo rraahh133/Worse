@@ -46,6 +46,8 @@ export global ChatUi {
     in property <bool> show-speed: true;
     in property <string> speed;
     callback speed-tick();
+    // Seconds the open session's running turn has been running (src/turn_clock.rs), -1 when unknown.
+    callback turn-secs() -> int;
     in property <[OutputRow]> outputs;
     in property <[UsagePart]> usage-parts;
     in property <[PlanLimit]> plan-limits;
@@ -202,13 +204,16 @@ export global ChatUi {
     in property <bool> drag-on;
     in property <length> drag-lo;
     in property <length> drag-hi;
-    // the block the drag began in has a selection: its top and bottom
-    callback drag-begin(length, length);
-    // a block joined or left the selection: its top and left in whole pixels, and its text
-    callback drag-join(int, int, string);
-    callback drag-part(int, int);
-    // copy: the first block's text, the two ends of its selection (bytes), its top and left
-    callback drag-copy(string, int, int, int, int);
+    // the block the drag began in has a selection: its top and bottom, and the top and bottom of the message
+    // it belongs to (the selection never leaves that message)
+    callback drag-begin(length, length, length, length);
+    // the left button is held (the span follows the pointer only then; afterwards the selection stands)
+    in property <bool> drag-held;
+    // a block joined or left the selection: its message id, block index and list row, and its text
+    callback drag-join(int, int, int, string);
+    callback drag-part(int, int, int);
+    // copy: the first block's text, the two ends of its selection (bytes), its message id, block and row
+    callback drag-copy(string, int, int, int, int, int);
     callback dismiss-error();
 
     // Labels of the command-center actions that are not keymap commands.

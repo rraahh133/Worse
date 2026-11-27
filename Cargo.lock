@@ -3150,6 +3150,7 @@ dependencies = [
  "flate2",
  "harness-agent-config",
  "harness-config",
+ "harness-connectors",
  "harness-core",
  "harness-core-api",
  "harness-import",
@@ -3221,6 +3222,24 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
+name = "harness-connectors"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "harness-agent-config",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3372,6 +3391,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "harness-plugins"
+version = "0.1.0"
+dependencies = [
+ "harness-agent-config",
+ "harness-settings",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "harness-protocol"
 version = "0.1.0"
 dependencies = [
@@ -3457,7 +3490,7 @@ dependencies = [
 
 [[package]]
 name = "harness-slint"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "alacritty_terminal",
  "clipboard-win",
@@ -3465,10 +3498,12 @@ dependencies = [
  "harness-agent-config",
  "harness-agent-hub",
  "harness-api-agent",
+ "harness-connectors",
  "harness-core-api",
  "harness-graph-view",
  "harness-perf",
  "harness-platform",
+ "harness-plugins",
  "harness-remote",
  "harness-settings",
  "harness-ui",
@@ -7694,6 +7729,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -8310,6 +8346,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "serde_urlencoded"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
+dependencies = [
+ "form_urlencoded",
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

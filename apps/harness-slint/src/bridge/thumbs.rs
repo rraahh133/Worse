@@ -1,4 +1,5 @@
-//! Small previews of images in the transcript: images attached to a user message and image files a tool read.
+//! Small previews of images in the transcript: images attached to a user message, image files a tool read, and the
+//! images / videos an answer names (a video shows its first frame, decoded with ffmpeg when it is installed).
 //! Decoding runs on one worker thread; the UI thread keeps the decoded thumbnails and patches the rows.
 
 use std::collections::HashMap;
@@ -18,7 +19,6 @@ const MAX_FILE_BYTES: u64 = 40 * 1024 * 1024;
 const MAX_CACHED: usize = 160;
 const THUMB_WIDTH: u32 = 336;
 const THUMB_HEIGHT: u32 = 216;
-const EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "bmp"];
 
 #[derive(Default)]
 pub(super) struct Thumbs {
@@ -36,11 +36,24 @@ impl Thumbs {
     }
 }
 
-fn is_image(path: &str) -> bool {
+fn ext(path: &str) -> String {
     Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| EXTENSIONS.iter().any(|x| e.eq_ignore_ascii_case(x)))
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default()
+}
+
+fn is_image(path: &str) -> bool {
+    crate::media::is_image_ext(&ext(path))
+}
+
+fn is_media(path: &str) -> bool {
+    crate::media::is_media_ext(&ext(path))
+}
+
+fn is_video(path: &str) -> bool {
+    crate::media::is_video_ext(&ext(path))
 }
 
 fn resolve(raw: &str, workspace: &Path) -> PathBuf {
@@ -69,6 +82,13 @@ pub(super) fn tool_image(title: &str, workspace: &Path) -> Option<String> {
 }
 
 fn decode(path: &Path) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
+    if is_video(&path.to_string_lossy()) {
+        // 没有 ffmpeg 或解码失败时用一块深色占位图，条带里仍显示播放按钮。
+        return Some(
+            crate::media::video_thumb(path, THUMB_WIDTH, THUMB_HEIGHT)
+                .unwrap_or_else(crate::media::placeholder),
+        );
+    }
     if std::fs::metadata(path).ok()?.len() > MAX_FILE_BYTES {
         return None;
     }
@@ -107,7 +127,7 @@ impl UiState {
     pub(super) fn row_images(&mut self, id: ItemId, paths: &[String]) -> (ModelRc<ChatImage>, i32) {
         let paths: Vec<String> = paths
             .iter()
-            .filter(|p| is_image(p))
+            .filter(|p| is_media(p))
             .map(|p| resolve(p, &self.workspace).to_string_lossy().into_owned())
             .collect();
         if paths.is_empty() {
@@ -134,6 +154,7 @@ impl UiState {
                 Some(ChatImage {
                     path: path.as_str().into(),
                     image,
+                    video: is_video(path),
                 })
             })
             .collect();
@@ -166,4 +187,18 @@ impl UiState {
             });
         }
     }
+}
+
+/// Media files of the transcript row that shows `path` (the viewer's previous / next), else just `path`.
+pub(crate) fn gallery_of(path: &str) -> Vec<String> {
+    let mut found = None;
+    with_state(|s| {
+        found = s
+            .thumbs
+            .rows
+            .values()
+            .find(|paths| paths.iter().any(|p| p == path))
+            .cloned();
+    });
+    found.unwrap_or_else(|| vec![path.to_owned()])
 }

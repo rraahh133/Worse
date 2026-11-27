@@ -48,6 +48,9 @@ impl Worker {
             PlanOp::ImportMcp(_) => {
                 return Err("import is planned separately".to_owned());
             }
+            op @ (PlanOp::InstallPlugin { .. } | PlanOp::RemovePlugin { .. }) => {
+                return super::plugins::plan(svc, &self.data_dir, op).await;
+            }
             PlanOp::InstallCatalog { name, skill, extra } => {
                 let mut merged = WritePlan::default();
                 let mut planned = 0_u32;

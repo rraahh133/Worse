@@ -24,6 +24,7 @@ use crate::core::{Command, Reply, SettingsCall};
 
 mod docs;
 mod helpers;
+mod plugins;
 mod reqs;
 
 use helpers::{import_summary, market_supports, message, plan_paths, post};
@@ -204,10 +205,22 @@ impl Worker {
                             pending = Some(next);
                             post(move |s| s.show_diff(title, &path, &diff, no_op));
                         }
-                        Err(error) => post(move |s| s.plan_failed(&error)),
+                        Err(error) => {
+                            if title.ends_with("plugin") || title.contains("plugin ") {
+                                plugins::notify(Err(error.clone()));
+                            }
+                            post(move |s| s.plan_failed(&error));
+                        }
                     }
                 }
-                Req::Cancel => pending = None,
+                Req::Cancel => {
+                    if matches!(pending.take(), Some(Pending::Plugin(..))) {
+                        plugins::notify(Err(String::new()));
+                    }
+                }
+                Req::PluginBuiltin { name, on } => {
+                    plugins::builtin(&self.data_dir, &name, on).await;
+                }
                 Req::Confirm => {
                     let mut toast = None;
                     let result = match pending.take() {
@@ -226,6 +239,9 @@ impl Worker {
                         Some(Pending::Memory(plan)) => {
                             self.call(|reply| SettingsCall::MemoryApply(plan, reply))
                                 .await
+                        }
+                        Some(Pending::Plugin(plan, commit)) => {
+                            plugins::confirm(&svc, &self.data_dir, &plan, commit).await
                         }
                         None => Ok(()),
                     };

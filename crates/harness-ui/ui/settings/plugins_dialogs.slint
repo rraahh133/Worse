@@ -1,0 +1,185 @@
+// Dialogs, the Add menu and the plugin detail view of Settings > Plugins (split from plugins.slint).
+import { Theme } from "../theme/tokens.slint";
+import { Icons, Icon, Spinner, Button, MenuShell, MenuItem, Dialog } from "../components/controls.slint";
+import { PageHeader, Group, RowDivider, SearchField, TextField, Switch, Badge, StatusLine, SegmentedControl, SetButton } from "parts.slint";
+import { PluginsUi, PluginRow, ConnectorRow } from "plugins_ui.slint";
+import { PluginArt, Tile, RowMenu, ListHeader, EmptyNote, PluginActions, ConnectorActions } from "plugins_rows.slint";
+
+export component AddMenu inherits Rectangle {
+    callback add-connector();
+    callback add-marketplace();
+    width: btn.preferred-width; height: btn.preferred-height;
+    btn := Button {
+        text: @tr("Add"); size: "sm"; has-icon: true; icon: Icons.plus;
+        clicked => { menu.show(); }
+    }
+    menu := PopupWindow {
+        x: root.width - 240px; y: root.height + 6px; width: 240px;
+        close-policy: close-on-click-outside;
+        MenuShell {
+            MenuItem { text: @tr("Add custom connector"); show-check: false; clicked => { root.add-connector(); } }
+            MenuItem { text: @tr("Add marketplace"); show-check: false; clicked => { root.add-marketplace(); } }
+        }
+    }
+}
+
+// "Add custom connector": name + https URL of a remote MCP server.
+export component AddConnectorDialog inherits Dialog {
+    callback cancel();
+    callback submit(string, string);
+    dialog-width: 440px;
+    title: @tr("Add custom connector");
+    Text {
+        text: @tr("Point Harness at a remote MCP server. Once you connect, every agent gets its tools.");
+        font-size: Theme.ui-sm; color: Theme.muted; wrap: word-wrap;
+    }
+    // 修复：同 ClientDialog，按钮直接读输入框的 text。
+    name-field := TextField { label: @tr("Name"); placeholder: @tr("Name"); }
+    url-field := TextField { label: @tr("Server URL"); placeholder: @tr("https://mcp.example.com/mcp"); mono: true; }
+    HorizontalLayout {
+        alignment: end; spacing: 8px;
+        Button { text: @tr("Cancel"); size: "sm"; clicked => { root.cancel(); } }
+        Button {
+            text: @tr("Add"); size: "sm"; variant: "primary";
+            enabled: name-field.text != "" && url-field.text != "";
+            clicked => { root.submit(name-field.text, url-field.text); }
+        }
+    }
+}
+
+// "Use your own OAuth client": opened by Rust when a service needs the user's own app registration.
+export component ClientDialog inherits Dialog {
+    callback cancel();
+    callback submit(string, string);
+    dialog-width: 520px;
+    title: @tr("Use your own OAuth app for {0}", PluginsUi.client-for.title);
+    Text { text: PluginsUi.client-help; font-size: Theme.ui-sm; color: Theme.foreground-subtle; wrap: word-wrap; }
+    if PluginsUi.client-redirect != "": VerticalLayout {
+        spacing: 2px;
+        Text { text: @tr("Redirect URI"); font-size: Theme.ui-xs; color: Theme.muted; }
+        Text { text: PluginsUi.client-redirect; font-family: Theme.mono-font; font-size: Theme.ui-sm; color: Theme.foreground-subtle; wrap: word-wrap; }
+    }
+    if PluginsUi.client-server != "": Text {
+        text: @tr("Authorization server: {0}", PluginsUi.client-server);
+        font-size: Theme.ui-xs; color: Theme.muted; wrap: word-wrap;
+    }
+    if PluginsUi.client-docs-url != "": HorizontalLayout {
+        alignment: start;
+        Button {
+            text: @tr("Open setup guide"); size: "xs"; variant: "ghost"; has-icon: true; icon: Icons.external-link;
+            clicked => { PluginsUi.open-url(PluginsUi.client-docs-url); }
+        }
+    }
+    // 修复：原来通过 root.client-id 双向绑定判断按钮是否可用，填了 Client ID 后按钮仍是禁用状态；
+    // 现在直接读输入框自身的 text。
+    id-field := TextField { label: @tr("Client ID"); placeholder: @tr("Client ID"); }
+    secret-field := TextField { label: @tr("Client secret (optional)"); placeholder: @tr("Client secret (optional)"); password: true; }
+    HorizontalLayout {
+        alignment: end; spacing: 8px;
+        Button { text: @tr("Cancel"); size: "sm"; clicked => { root.cancel(); } }
+        Button {
+            text: @tr("Connect"); size: "sm"; variant: "primary"; enabled: id-field.text != "";
+            clicked => { root.submit(id-field.text, secret-field.text); }
+        }
+    }
+}
+
+// Plugin detail: avatar header with the same actions, description, components, notes.
+export component PluginDetailView inherits VerticalLayout {
+    pure function meta(a: string, b: string, c: string) -> string {
+        (a != "" ? a : "") + (a != "" && b != "" ? " · " : "") + b + ((a != "" || b != "") && c != "" ? " · " : "") + c
+    }
+    pure function kind-label(k: string) -> string {
+        if k == "skill" { return @tr("Skill"); }
+        if k == "command" { return @tr("Command"); }
+        if k == "subagent" { return @tr("Subagent"); }
+        if k == "mcp" { return @tr("MCP server"); }
+        if k == "hook" { return @tr("Hook"); }
+        if k == "lsp" { return @tr("Language server"); }
+        return k;
+    }
+    spacing: 12px;
+    HorizontalLayout {
+        alignment: start; spacing: 8px;
+        Button {
+            text: @tr("Back"); size: "sm"; variant: "ghost"; has-icon: true; icon: Icons.chevron-left;
+            clicked => { PluginsUi.close-detail(); }
+        }
+        if PluginsUi.detail-loading: HorizontalLayout {
+            spacing: 6px;
+            Spinner { size: 14px; }
+            Text { text: @tr("Reading plugin…"); font-size: Theme.ui-sm; color: Theme.muted; vertical-alignment: center; }
+        }
+    }
+    Group {
+        VerticalLayout {
+            padding: 16px; spacing: 10px;
+            HorizontalLayout {
+                spacing: 12px;
+                Tile { icon: PluginsUi.detail.icon; has-icon: PluginsUi.detail.has-icon; title: PluginsUi.detail.title; }
+                VerticalLayout {
+                    horizontal-stretch: 1; spacing: 4px; alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: PluginsUi.detail.title; font-size: 16px; font-weight: Theme.weight-semibold;
+                            color: Theme.foreground; vertical-alignment: center; overflow: elide;
+                        }
+                        if PluginsUi.detail.verified: Icon { source: Icons.circle-check; size: 14px; tint: Theme.muted; }
+                        if PluginsUi.detail.builtin: Badge { text: @tr("Built-in"); tint: Theme.muted; }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    if root.meta(PluginsUi.detail.author, PluginsUi.detail.version, PluginsUi.detail.marketplace) != "": Text {
+                        text: root.meta(PluginsUi.detail.author, PluginsUi.detail.version, PluginsUi.detail.marketplace);
+                        font-size: Theme.ui-sm; color: Theme.muted; overflow: elide;
+                    }
+                }
+                VerticalLayout { alignment: center; PluginActions { item: PluginsUi.detail; } }
+            }
+            if PluginsUi.detail.description != "": Text {
+                text: PluginsUi.detail.description; font-size: Theme.ui-sm; color: Theme.foreground-subtle; wrap: word-wrap;
+            }
+            if PluginsUi.detail.note != "": Text {
+                text: PluginsUi.detail.note; font-size: Theme.ui-sm; color: Theme.warning; wrap: word-wrap;
+            }
+            if PluginsUi.detail.installed && PluginsUi.detail.reach != "": Text {
+                text: @tr("Reaches: {0}", PluginsUi.detail.reach); font-size: Theme.ui-xs; color: Theme.muted; wrap: word-wrap;
+            }
+            if PluginsUi.homepage != "": HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: @tr("Homepage"); size: "xs"; variant: "ghost"; has-icon: true; icon: Icons.external-link;
+                    clicked => { PluginsUi.open-url(PluginsUi.homepage); }
+                }
+            }
+        }
+    }
+    if PluginsUi.parts.length > 0: Group {
+        title: @tr("Components");
+        for part[idx] in PluginsUi.parts: VerticalLayout {
+            if idx > 0: RowDivider { }
+            HorizontalLayout {
+                padding-left: 16px; padding-right: 16px; padding-top: 9px; padding-bottom: 9px; spacing: 10px;
+                VerticalLayout { alignment: center; Badge { text: root.kind-label(part.kind); tint: Theme.muted; } }
+                VerticalLayout {
+                    horizontal-stretch: 1; spacing: 2px;
+                    Text { text: part.name; font-size: Theme.ui-sm; font-weight: Theme.weight-medium; color: Theme.foreground; overflow: elide; }
+                    if part.detail != "": Text { text: part.detail; font-size: Theme.ui-xs; color: Theme.muted; wrap: word-wrap; }
+                }
+                if !part.installed: Text {
+                    text: @tr("not installed"); font-size: Theme.ui-xs; color: Theme.foreground-subtlest; vertical-alignment: center;
+                }
+            }
+        }
+    }
+    if PluginsUi.notes.length > 0: Group {
+        title: @tr("Notes");
+        VerticalLayout {
+            padding: 14px; spacing: 6px;
+            for line in PluginsUi.notes: Text {
+                text: "• " + line; font-size: Theme.ui-sm; color: Theme.foreground-subtle; wrap: word-wrap;
+            }
+        }
+    }
+}
+

@@ -6,6 +6,75 @@ import { OrchestraUi } from "./ui.slint";
 import { ODiv, OCard, ORow, OStepper, OButton, OPill, ODot, OSegmented, OAgentSelect, AddConnectionButton, InstructionsBox } from "./parts.slint";
 import { Canvas, AddAgentButton, CanvasPrefs } from "./canvas.slint";
 
+component GuideStep inherits HorizontalLayout {
+    in property <string> number;
+    in property <string> title;
+    in property <string> body;
+    spacing: 12px;
+    VerticalLayout {
+        alignment: start;
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            background: Theme.accent-fg.with-alpha(0.16);
+            Text {
+                text: root.number;
+                font-size: 12px;
+                font-weight: Theme.weight-semibold;
+                color: Theme.accent-fg;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 2px;
+        Text {
+            text: root.title;
+            font-size: 13px;
+            font-weight: Theme.weight-medium;
+            color: Theme.foreground;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.body;
+            font-size: 12px;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+    }
+}
+
+/// Three steps on top of the page: how to build a team and use it.
+export component GuideCard inherits OCard {
+    title: @tr("How it works");
+    note: @tr("Build a team in three steps");
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        spacing: 12px;
+        GuideStep {
+            number: "1";
+            title: @tr("Add agents to the team");
+            body: @tr("Click \"Add agent\" below and pick the agents you want: Claude Code, Codex, agy or one of your API providers.");
+        }
+        GuideStep {
+            number: "2";
+            title: @tr("Pick the leader and connect");
+            body: @tr("Right-click a box to set its role. Make your main chat agent the Orchestrator, then drag from the bottom edge of its box to each Subagent box.");
+        }
+        GuideStep {
+            number: "3";
+            title: @tr("Delegate from the chat");
+            body: @tr("Ask the Orchestrator to hand work to subagents, for example \"split this across subagents\". Running subagents show under Background tasks in the side panel.");
+        }
+    }
+}
+
 export component DecisionCard inherits OCard {
     title: "Decision model";
     note: "Routes work to agents";
@@ -140,7 +209,7 @@ export component ConnectionsCard inherits OCard {
         padding-top: 11px;
         padding-bottom: 11px;
         Text {
-            text: @tr("No connections yet. Add agents in the canvas editor below, then connect them.");
+            text: @tr("No connections yet. Add agents in the team canvas above, then connect them.");
             font-size: 12px;
             color: Theme.muted;
             wrap: word-wrap;
@@ -165,7 +234,7 @@ export component CanvasCard inherits OCard {
     public function fit() {
         canvas.fit();
     }
-    title: @tr("Canvas editor");
+    title: @tr("Team");
     note: @tr("{0} agents", OrchestraUi.nodes.length);
     VerticalLayout {
         padding-left: 16px;

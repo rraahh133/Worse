@@ -19,6 +19,7 @@ mod live;
 mod live_update;
 mod machine_view;
 mod markdown;
+mod media;
 mod orchestra;
 mod panels;
 
@@ -26,6 +27,7 @@ mod codex_usage;
 mod perf;
 mod plan_usage;
 mod plan_view;
+mod plugins;
 mod release_update;
 mod remote;
 mod security;
@@ -33,6 +35,7 @@ mod settings;
 mod setup;
 mod skills;
 mod speed;
+mod turn_clock;
 mod wallpaper;
 mod window_frame;
 mod workarea;
@@ -146,6 +149,8 @@ pub fn run() -> ExitCode {
     settings::recall::install(&window, &data_dir, &workspace_dir);
     settings::graph::install(&window, &data_dir, &workspace_dir);
     settings::decision::install(&window, &data_dir);
+    plugins::install(&window, settings_tx.clone(), &data_dir);
+    media::install(&window);
     skills::install(&window, settings_tx, &data_dir);
     // §9.10：首次启动检查与 Set up agents 对话框。
     setup::install(&window, first_run_done);

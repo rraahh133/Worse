@@ -13,6 +13,7 @@ use super::SessionActor;
 use crate::{files, store_chat};
 
 mod rewind;
+mod window;
 
 /// Text fields of tool content and `rawOutput` are capped at this many bytes.
 const TEXT_CAP: usize = 64 * 1024;

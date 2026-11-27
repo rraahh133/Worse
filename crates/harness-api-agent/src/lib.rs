@@ -14,6 +14,7 @@ mod code_mode_tests;
 mod code_mode_types;
 mod compress;
 mod compress_tools;
+mod context_meter;
 mod factcheck;
 mod factcheck_claims;
 mod hermes;

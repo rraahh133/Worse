@@ -5,7 +5,7 @@ import { SettingsUi, DecisionUi } from "../globals.slint";
 import { OrchestraUi } from "./ui.slint";
 import { ODiv, OCard, ORow, OStepper, OButton, OPill, ODot, OSegmented, OAgentSelect, AddConnectionButton, InstructionsBox } from "./parts.slint";
 import { Canvas, AddAgentButton, CanvasPrefs } from "./canvas.slint";
-import { DecisionCard, ConnectionsCard, CanvasCard } from "./page_cards.slint";
+import { GuideCard, DecisionCard, ConnectionsCard, CanvasCard } from "./page_cards.slint";
 
 export component OrchestraPage inherits VerticalLayout {
     in property <bool> stacked;
@@ -36,7 +36,11 @@ export component OrchestraPage inherits VerticalLayout {
     init => {
         DecisionUi.refresh();
     }
-    DecisionCard { }
+    // 修复：画布放在页面最底下，用户找不到也不知道怎么建子代理；先给三步指南，再放画布和连接，
+    // 并发、决策模型等进阶设置放到后面。
+    GuideCard { }
+    canvas-card := CanvasCard { }
+    ConnectionsCard { }
     OCard {
         title: @tr("Concurrency");
         note: @tr("Applies to new delegations");
@@ -128,6 +132,7 @@ export component OrchestraPage inherits VerticalLayout {
             }
         }
     }
+    DecisionCard { }
     // Pair: two 432 cards, gap 16 (stacked when narrow).
     if !root.stacked: HorizontalLayout {
         spacing: 16px;
@@ -182,7 +187,4 @@ export component OrchestraPage inherits VerticalLayout {
         zoom-to(z) => { canvas-card.zoom-to(z); SettingsUi.set-int("orchestra.canvasZoom", round(canvas-card.zoom * 100)); }
         fit => { canvas-card.fit(); SettingsUi.set-int("orchestra.canvasZoom", round(canvas-card.zoom * 100)); }
     }
-    ConnectionsCard { }
-    // Existing team editor (kept below the designed cards).
-    canvas-card := CanvasCard { }
 }

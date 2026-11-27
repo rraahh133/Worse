@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_PAIR_URL = "dev.harness.mobile.PAIR_URL"
 
         private const val RETRY_URL = "harness-retry:reload"
+        private const val REPAIR_URL = "harness-repair:forget"
     }
 
     private lateinit var web: WebView
@@ -104,8 +105,11 @@ class MainActivity : AppCompatActivity() {
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
+        // 修复：长按总是弹出 Reload/Re-pair 菜单，挡住了系统的选择文字/复制。
+        // 正常页面把长按交给 WebView（选择、复制、分享）；只有离线页才弹菜单。
         web.isLongClickable = true
         web.setOnLongClickListener {
+            if (!showingError) return@setOnLongClickListener false
             showMenu()
             true
         }
@@ -237,12 +241,14 @@ class MainActivity : AppCompatActivity() {
               a{display:inline-block;margin-top:10px;padding:12px 28px;border-radius:10px;
                 background:linear-gradient(135deg,#7c8cff,#b07cff);color:#fff;font-weight:600;
                 text-decoration:none}
+              a.ghost{margin-top:0;background:none;color:#8a909a;font-weight:500}
             </style></head>
             <body><div class="wrap">
               <h1>Can't reach Harness</h1>
               <p>${Html.escapeHtml(origin)}<br><small>$detail</small></p>
               <p>Check that the desktop app is running and the tunnel is up.</p>
               <a href="$RETRY_URL">Retry</a>
+              <a class="ghost" href="$REPAIR_URL">Re-pair this phone</a>
             </div></body></html>
         """.trimIndent()
         web.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
@@ -263,6 +269,10 @@ class MainActivity : AppCompatActivity() {
     private fun handleUrl(uri: Uri): Boolean {
         if (uri.scheme.orEmpty().equals("harness-retry", ignoreCase = true)) {
             loadStart()
+            return true
+        }
+        if (uri.scheme.orEmpty().equals("harness-repair", ignoreCase = true)) {
+            confirmRepair()
             return true
         }
         val scheme = uri.scheme.orEmpty().lowercase()

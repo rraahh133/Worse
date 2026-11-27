@@ -1,0 +1,285 @@
+// Rows, tiles and small parts of Settings > Plugins (split from plugins.slint).
+import { Theme } from "../theme/tokens.slint";
+import { Icons, Icon, Spinner, Button, MenuShell, MenuItem, Dialog } from "../components/controls.slint";
+import { PageHeader, Group, RowDivider, SearchField, TextField, Switch, Badge, StatusLine, SegmentedControl, SetButton } from "parts.slint";
+import { PluginsUi, PluginRow, ConnectorRow } from "plugins_ui.slint";
+
+// Avatar art for rows and the detail header (Slint has no file-level functions).
+export global PluginArt {
+    // First letter of a title: strings have no index operator, so match prefixes (fallback: a dot).
+    pure public function initial(t: string) -> string {
+        if t == "" { return "•"; }
+        return t.to-uppercase().starts-with("A") ? "A" : t.to-uppercase().starts-with("B") ? "B" : t.to-uppercase().starts-with("C") ? "C" : t.to-uppercase().starts-with("D") ? "D" : t.to-uppercase().starts-with("E") ? "E" : t.to-uppercase().starts-with("F") ? "F" : t.to-uppercase().starts-with("G") ? "G" : t.to-uppercase().starts-with("H") ? "H" : t.to-uppercase().starts-with("I") ? "I" : t.to-uppercase().starts-with("J") ? "J" : t.to-uppercase().starts-with("K") ? "K" : t.to-uppercase().starts-with("L") ? "L" : t.to-uppercase().starts-with("M") ? "M" : t.to-uppercase().starts-with("N") ? "N" : t.to-uppercase().starts-with("O") ? "O" : t.to-uppercase().starts-with("P") ? "P" : t.to-uppercase().starts-with("Q") ? "Q" : t.to-uppercase().starts-with("R") ? "R" : t.to-uppercase().starts-with("S") ? "S" : t.to-uppercase().starts-with("T") ? "T" : t.to-uppercase().starts-with("U") ? "U" : t.to-uppercase().starts-with("V") ? "V" : t.to-uppercase().starts-with("W") ? "W" : t.to-uppercase().starts-with("X") ? "X" : t.to-uppercase().starts-with("Y") ? "Y" : t.to-uppercase().starts-with("Z") ? "Z" : "•";
+    }
+    // Letter group 0..5 of the first letter.
+    pure function letter-group(t: string) -> int {
+        return initial(t) == "A" || initial(t) == "B" || initial(t) == "C" || initial(t) == "D" ? 0
+            : initial(t) == "E" || initial(t) == "F" || initial(t) == "G" || initial(t) == "H" ? 1
+            : initial(t) == "I" || initial(t) == "J" || initial(t) == "K" || initial(t) == "L" ? 2
+            : initial(t) == "M" || initial(t) == "N" || initial(t) == "O" || initial(t) == "P" ? 3
+            : initial(t) == "Q" || initial(t) == "R" || initial(t) == "S" || initial(t) == "T" ? 4
+            : 5;
+    }
+    // 修复：只按首字母取色时，按字母排序的列表里一屏全是同一个紫色 "A"；改为首字母 + 名称长度一起散列。
+    pure function tint-slot(t: string) -> int {
+        return Math.mod(letter-group(t) * 3 + t.character-count, 7);
+    }
+    // Avatar tint, stable per title so a service keeps its colour between runs.
+    pure public function tile-tint(t: string) -> color {
+        return tint-slot(t) == 0 ? #6F7FE8
+            : tint-slot(t) == 1 ? #3E9F6C
+            : tint-slot(t) == 2 ? #C98A35
+            : tint-slot(t) == 3 ? #C45A7C
+            : tint-slot(t) == 4 ? #4B93C4
+            : tint-slot(t) == 5 ? #9468CC
+            : #3E9C93;
+    }
+}
+
+// 36px avatar: the logo when the row has one, else a coloured tile with the first letter.
+export component Tile inherits Rectangle {
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> title;
+    width: 36px; height: 36px; border-radius: 8px;
+    border-width: root.has-icon ? 1px : 0px;
+    border-color: Theme.border;
+    background: root.has-icon ? (Theme.dark ? #ffffff1a : #ffffff) : PluginArt.tile-tint(root.title);
+    if root.has-icon: Image { x: 5px; y: 5px; width: 26px; height: 26px; source: root.icon; image-fit: contain; }
+    if !root.has-icon: Text {
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        text: PluginArt.initial(root.title);
+        font-size: Theme.ui-caption; font-weight: Theme.weight-semibold; color: #ffffff;
+        horizontal-alignment: center; vertical-alignment: center; accessible-role: none;
+    }
+}
+
+// "⋯" trigger with a menu, right-aligned under it; children are the menu items.
+export component RowMenu inherits Rectangle {
+    in property <string> label;
+    // Number of menu items (the popup cannot measure forwarded children, so it is sized from this).
+    in property <int> items: 1;
+    width: 28px; height: 28px; border-radius: Theme.radius-sm;
+    background: ta.has-hover ? Theme.hover : transparent;
+    accessible-role: button; accessible-label: root.label;
+    accessible-action-default => { menu.show(); }
+    animate background { duration: Theme.dur-hover; }
+    Icon {
+        x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+        source: Icons.ellipsis; size: 16px; tint: Theme.icon-subtle;
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { menu.show(); } }
+    menu := PopupWindow {
+        // 修复：转发的 @children 量不出首选高度，弹窗只剩一条细横条、文字溢出；按条目数给出明确高度。
+        x: root.width - 200px; y: root.height + 4px; width: 200px;
+        height: root.items * 34px + max(0, root.items - 1) * 2px + 12px;
+        close-policy: close-on-click-outside;
+        MenuShell { @children }
+    }
+}
+
+// Connector actions: Connect / Add → "Waiting for browser…" → switch + ⋯ menu.
+export component ConnectorActions inherits HorizontalLayout {
+    in property <ConnectorRow> item;
+    spacing: 6px; alignment: end;
+    if root.item.busy: HorizontalLayout {
+        spacing: 6px; alignment: center;
+        Spinner { size: 14px; }
+        Text { text: @tr("Waiting for browser…"); font-size: Theme.ui-sm; color: Theme.muted; vertical-alignment: center; }
+    }
+    if !root.item.busy && !root.item.connected: Button {
+        text: root.item.public ? @tr("Add") : @tr("Connect");
+        size: "sm"; variant: "outline";
+        clicked => { PluginsUi.connect(root.item.id); }
+    }
+    if !root.item.busy && root.item.connected: Switch {
+        label: root.item.enabled ? @tr("Turn off {0}", root.item.title) : @tr("Turn on {0}", root.item.title);
+        checked: root.item.enabled;
+        toggled(on) => { PluginsUi.set-connector-enabled(root.item.id, on); }
+    }
+    if !root.item.busy && root.item.connected: RowMenu {
+        label: @tr("Actions for {0}", root.item.title);
+        items: 2;
+        MenuItem { text: @tr("Disconnect"); show-check: false; clicked => { PluginsUi.disconnect(root.item.id); } }
+        MenuItem {
+            text: @tr("Open website"); show-check: false; enabled: root.item.homepage != "";
+            clicked => { PluginsUi.open-url(root.item.homepage); }
+        }
+    }
+}
+
+// One connector: avatar, title + verified mark, one muted meta line (or the error), actions on the right.
+export component ConnectorRowView inherits Rectangle {
+    in property <ConnectorRow> item;
+    pure function line(i: ConnectorRow) -> string {
+        if i.note != "" { return i.note; }
+        if i.description == "" { return i.publisher == "" ? @tr("Connector") : @tr("Connector · {0}", i.publisher); }
+        return i.publisher == "" ? @tr("Connector · {0}", i.description) : @tr("Connector · {0} · {1}", i.publisher, i.description);
+    }
+    height: 60px; border-radius: 10px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.dur-hover; }
+    ta := TouchArea { }
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 10px; spacing: 12px;
+        Tile { icon: root.item.icon; has-icon: root.item.has-icon; title: root.item.title; }
+        VerticalLayout {
+            horizontal-stretch: 1; alignment: center; spacing: 3px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: root.item.title; font-size: Theme.ui-caption; font-weight: Theme.weight-semibold;
+                    color: Theme.foreground; vertical-alignment: center; overflow: elide;
+                }
+                if root.item.verified: Icon { source: Icons.circle-check; size: 13px; tint: Theme.muted; }
+                if root.item.custom: Badge { text: @tr("Custom"); tint: Theme.muted; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            Text {
+                text: root.line(root.item); font-size: Theme.ui-sm; overflow: elide; vertical-alignment: center;
+                color: root.item.note != "" ? (root.item.note-error ? Theme.destructive : Theme.muted) : Theme.muted;
+            }
+        }
+        // 修复：按钮、开关和 ⋯ 贴在行的顶部；放进居中的竖向布局。
+        VerticalLayout { alignment: center; ConnectorActions { item: root.item; } }
+    }
+}
+
+// Plugin actions: Install / Update + switch + ⋯ menu, "Working…" while busy, "Not supported" otherwise.
+export component PluginActions inherits HorizontalLayout {
+    in property <PluginRow> item;
+    // 修复：详情页里操作区拿到多余宽度时居中，开关和 ⋯ 离开右边缘；改为靠右。
+    spacing: 6px; alignment: end;
+    if root.item.busy: HorizontalLayout {
+        spacing: 6px; alignment: center;
+        Spinner { size: 14px; }
+        Text { text: @tr("Working…"); font-size: Theme.ui-sm; color: Theme.muted; vertical-alignment: center; }
+    }
+    if !root.item.busy && !root.item.installed && root.item.installable: Button {
+        text: @tr("Install"); size: "sm"; variant: "outline";
+        clicked => { PluginsUi.install(root.item.key); }
+    }
+    if !root.item.busy && !root.item.installed && !root.item.installable: Text {
+        text: @tr("Not supported"); font-size: Theme.ui-sm; color: Theme.foreground-subtlest; vertical-alignment: center;
+    }
+    if !root.item.busy && root.item.installed && root.item.update: Button {
+        text: @tr("Update"); size: "sm"; variant: "outline";
+        clicked => { PluginsUi.install(root.item.key); }
+    }
+    if !root.item.busy && root.item.installed: Switch {
+        label: root.item.enabled ? @tr("Disable {0}", root.item.title) : @tr("Enable {0}", root.item.title);
+        checked: root.item.enabled;
+        toggled(on) => { PluginsUi.set-enabled(root.item.key, on); }
+    }
+    // 修复：内置插件没有更新也不能卸载，菜单会是空的；这时不显示 ⋯（点整行即可打开详情）。
+    if !root.item.busy && root.item.installed && (root.item.update || !root.item.builtin): RowMenu {
+        label: @tr("Actions for {0}", root.item.title);
+        items: (root.item.update ? 1 : 0) + (root.item.builtin ? 0 : 1);
+        if root.item.update: MenuItem { text: @tr("Update"); show-check: false; clicked => { PluginsUi.install(root.item.key); } }
+        if !root.item.builtin: MenuItem { text: @tr("Uninstall"); show-check: false; clicked => { PluginsUi.uninstall(root.item.key); } }
+    }
+}
+
+// One plugin: same row look; clicking it opens the detail view.
+export component PluginRowView inherits Rectangle {
+    in property <PluginRow> item;
+    pure function line(i: PluginRow) -> string {
+        if i.note != "" { return i.note; }
+        if i.description == "" {
+            return i.author != "" ? @tr("Plugin · {0}", i.author) : i.marketplace != "" ? @tr("Plugin · {0}", i.marketplace) : @tr("Plugin");
+        }
+        return i.author != "" ? @tr("Plugin · {0} · {1}", i.author, i.description) : i.marketplace != "" ? @tr("Plugin · {0} · {1}", i.marketplace, i.description) : @tr("Plugin · {0}", i.description);
+    }
+    height: 60px; border-radius: 10px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.dur-hover; }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { PluginsUi.open-detail(root.item.key); } }
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 10px; spacing: 12px;
+        Tile { icon: root.item.icon; has-icon: root.item.has-icon; title: root.item.title; }
+        VerticalLayout {
+            horizontal-stretch: 1; alignment: center; spacing: 3px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: root.item.title; font-size: Theme.ui-caption; font-weight: Theme.weight-semibold;
+                    color: Theme.foreground; vertical-alignment: center; overflow: elide;
+                }
+                if root.item.verified: Icon { source: Icons.circle-check; size: 13px; tint: Theme.muted; }
+                if root.item.builtin: Badge { text: @tr("Built-in"); tint: Theme.muted; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            Text {
+                text: root.line(root.item); font-size: Theme.ui-sm; overflow: elide; vertical-alignment: center;
+                color: root.item.note != "" ? Theme.warning : Theme.muted;
+            }
+        }
+        VerticalLayout { alignment: center; PluginActions { item: root.item; } }
+    }
+}
+
+// List header: "Yours 4" / "More you can add 120", with "Show all N ⌄" on the right.
+export component ListHeader inherits HorizontalLayout {
+    in property <string> title;
+    in property <int> count;
+    in property <bool> show-all: false;
+    in property <int> total;
+    callback more();
+    // 修复：`alignment: center` 让整行居中（"Yours 2" 跑到中间），且 "⌄" 字体里没有，显示成方块。
+    height: 28px; spacing: 6px; padding-left: 10px;
+    Text {
+        text: root.title; font-size: Theme.ui-xs; font-weight: Theme.weight-semibold; color: Theme.muted;
+        vertical-alignment: center; horizontal-stretch: 0;
+    }
+    Text {
+        text: @tr("{0}", root.count); font-size: Theme.ui-xs; color: Theme.foreground-subtlest;
+        vertical-alignment: center; horizontal-stretch: 0;
+    }
+    Rectangle { horizontal-stretch: 1; }
+    if root.show-all: Rectangle {
+        width: more-row.preferred-width + 14px; height: 24px; border-radius: Theme.radius-sm;
+        background: ma.has-hover ? Theme.hover : transparent;
+        animate background { duration: Theme.dur-hover; }
+        accessible-role: button; accessible-label: @tr("Show all {0}", root.total);
+        accessible-action-default => { root.more(); }
+        more-row := HorizontalLayout {
+            x: 7px; spacing: 4px; alignment: start;
+            Text {
+                text: @tr("Show all {0}", root.total); font-size: Theme.ui-xs; color: Theme.muted;
+                vertical-alignment: center; accessible-role: none;
+            }
+            VerticalLayout { alignment: center; Icon { source: Icons.chevron-down; size: 12px; tint: Theme.muted; } }
+        }
+        ma := TouchArea { mouse-cursor: pointer; clicked => { root.more(); } }
+    }
+}
+
+// One category filter pill ("All" = "").
+export component CategoryChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 26px; preferred-width: ct.preferred-width + 20px; horizontal-stretch: 0;
+    border-radius: Theme.radius-full; border-width: 1px;
+    border-color: root.active ? Theme.accent-line : (ta.has-hover ? Theme.border-hover : Theme.border);
+    background: root.active ? Theme.accent-soft : (ta.has-hover ? Theme.surface : Theme.card);
+    animate background, border-color { duration: Theme.dur-hover; }
+    accessible-role: button; accessible-label: root.label; accessible-checked: root.active;
+    accessible-action-default => { root.clicked(); }
+    ct := Text {
+        text: root.label; font-size: Theme.ui-sm;
+        font-weight: root.active ? Theme.weight-semibold : Theme.weight-medium;
+        color: root.active ? Theme.accent-fg : Theme.foreground-subtle;
+        horizontal-alignment: center; vertical-alignment: center; accessible-role: none;
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Empty / loading note inside a list.
+export component EmptyNote inherits Rectangle {
+    in property <string> text;
+    height: 76px; border-radius: 10px; border-width: 1px; border-color: Theme.border;
+    Text { text: root.text; font-size: Theme.ui-sm; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+// "＋ Add" with its menu: custom connector, marketplace, refresh.

@@ -9,12 +9,24 @@ export component RichSelect inherits Rectangle {
     in property <string> font-family;
     in property <int> font-weight: 400;
     in property <brush> ink: Theme.foreground;
+    // The message this block belongs to (window coordinates): a drag that starts here stays inside it.
+    in property <length> box-top: root.top;
+    in property <length> box-bottom: root.top + root.height;
+    // Which message (`ChatItem.id`), which block of it and which list row this is: what a copy is keyed by.
+    in property <int> msg;
+    in property <int> block;
+    in property <int> list-row;
     callback link(string);
     height: st.preferred-height;
+    // 修复：选区由下面透明的纯文本 TextInput 计算，但它没有粗体/斜体/行内代码，字宽比 StyledText 窄，
+    // 一行里有粗体时高亮会往左偏一两个字（看到的选区和复制出来的不一致）。有选区时改为直接显示这层纯文本，
+    // 让看到的文字、高亮和复制内容对齐；没有选区时照常显示带格式的文字。
+    property <bool> selecting: field.anchor-position-byte-offset != field.cursor-position-byte-offset;
     st := StyledText {
         x: 0;
         y: 0;
         width: root.width;
+        visible: !root.selecting;
         text: root.text;
         default-color: root.ink;
         link-color: Theme.link;
@@ -33,14 +45,14 @@ export component RichSelect inherits Rectangle {
         font-size: root.font-size;
         font-family: root.font-family;
         font-weight: root.font-weight;
-        color: #00000001;
-        selection-foreground-color: #00000001;
+        color: root.selecting ? root.ink : #00000001;
+        selection-foreground-color: root.selecting ? root.ink : #00000001;
         selection-background-color: Theme.text-selection;
         accessible-role: none;
         cursor-position-changed(p) => {
             // A selection began here: blocks the pointer is dragged over from now on join it.
             if self.has-focus && self.anchor-position-byte-offset != self.cursor-position-byte-offset {
-                ChatUi.drag-begin(root.top, root.top + root.height);
+                ChatUi.drag-begin(root.top, root.top + root.height, root.box-top, root.box-bottom);
             }
             // The field keeps following the pointer sideways after it has left; hold the selection at the edge.
             if (root.below || root.above) && self.cursor-position-byte-offset != root.pin {
@@ -49,15 +61,15 @@ export component RichSelect inherits Rectangle {
         }
         key-pressed(event) => {
             if ChatUi.drag-on && (event.modifiers.control || event.modifiers.meta) && (event.text == "c" || event.text == "C") {
-                ChatUi.drag-copy(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset, root.top / 1px, root.left / 1px);
+                ChatUi.drag-copy(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset, root.msg, root.block, root.list-row);
                 return accept;
             }
             return reject;
         }
     }
     // The pointer has left this block downwards (upwards) with a selection that began here: the selection
-    // runs to the block's end (start).
-    property <bool> leading: field.has-focus && ChatUi.drag-on && ChatUi.drag-hi > ChatUi.drag-lo;
+    // runs to the block's end (start). Only while the button is held: afterwards the selection stands.
+    property <bool> leading: field.has-focus && ChatUi.drag-on && ChatUi.drag-held && ChatUi.drag-hi > ChatUi.drag-lo;
     property <bool> below: root.leading && ChatUi.drag-lo >= root.top + root.height - 1px;
     property <bool> above: root.leading && ChatUi.drag-hi <= root.top + 1px;
     property <int> pin: -1;
@@ -79,16 +91,71 @@ export component RichSelect inherits Rectangle {
     // A text field's selection ends at its edge. When a selection that began in another block is dragged
     // over this one, it selects itself whole and hands in its text (`chat::select`).
     property <length> top: root.absolute-position.y;
-    property <length> left: root.absolute-position.x;
-    property <bool> joined: ChatUi.drag-on && !field.has-focus && root.top < ChatUi.drag-hi && root.top + root.height > ChatUi.drag-lo + 2px;
-    changed joined => {
-        if root.joined {
+    property <bool> inside: ChatUi.drag-on && !field.has-focus && root.top < ChatUi.drag-hi && root.top + root.height > ChatUi.drag-lo + 2px;
+    // 修复：松开鼠标后选区范围仍是窗口坐标，聊天滚动（代理输出、输入框变高、加载更早消息）时别的段落
+    // 滑进这块窗口区域就自动“加入”并整段选中，复制时混进去，看起来选区到处乱跑。现在只在按住拖动时
+    // 跟随范围加入/离开，松开后选区冻结；新的一次按下（drag-on 变 false）才清掉。
+    property <bool> joined;
+    function set-joined(on: bool) {
+        if on == root.joined {
+            return;
+        }
+        root.joined = on;
+        if on {
             field.select-all();
-            ChatUi.drag-join(root.top / 1px, root.left / 1px, root.plain);
+            root.enroll();
         } else {
             field.clear-selection();
-            ChatUi.drag-part(root.top / 1px, root.left / 1px);
+            ChatUi.drag-part(root.key-msg, root.key-block, root.key-row);
         }
+    }
+    changed inside => {
+        if ChatUi.drag-held {
+            root.set-joined(root.inside);
+        }
+    }
+    property <bool> drag-on: ChatUi.drag-on;
+    changed drag-on => {
+        if !root.drag-on {
+            root.set-joined(false);
+        }
+    }
+    // 修复：原来按 (top, left) 像素位置登记；滚动、列表复用实例后位置对不上，注销失败的段落（甚至别的
+    // 消息里、已不可见的复用实例）留在登记表里被一起复制。改为按 消息 id / 块序号 / 行序号 登记，
+    // 复制时只取起点那条消息里的块，并按块顺序拼接。
+    property <int> key-msg;
+    property <int> key-block;
+    property <int> key-row;
+    function enroll() {
+        root.key-msg = root.msg;
+        root.key-block = root.block;
+        root.key-row = root.list-row;
+        ChatUi.drag-join(root.key-msg, root.key-block, root.key-row, root.plain);
+    }
+    function reenroll() {
+        if root.joined {
+            ChatUi.drag-part(root.key-msg, root.key-block, root.key-row);
+            root.enroll();
+        }
+    }
+    // 修复：上一次选中的段落失去焦点后仍保留高亮，看起来像还在选区里；失去焦点（且不是被拖选加入）时清掉。
+    property <bool> focused: field.has-focus;
+    changed focused => {
+        if !root.focused && !root.joined {
+            field.clear-selection();
+        }
+    }
+    changed msg => {
+        root.reenroll();
+    }
+    changed block => {
+        root.reenroll();
+    }
+    changed list-row => {
+        root.reenroll();
+    }
+    changed plain => {
+        root.reenroll();
     }
     link-overlay := StyledText {
         x: 0;
@@ -105,4 +172,3 @@ export component RichSelect inherits Rectangle {
         }
     }
 }
-

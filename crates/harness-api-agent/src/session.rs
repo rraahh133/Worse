@@ -199,6 +199,18 @@ pub async fn run_turn(
         output_tokens += completion.output_tokens;
         cached_read += completion.cache_read_tokens;
         cached_write += completion.cache_write_tokens;
+        // 修复：API agent 从不报 usage_update，切到自定义 provider 后上下文面板一直显示 Claude 的旧数字。
+        let request_chars = messages.iter().map(llm::message_size).sum::<usize>()
+            + serde_json::to_string(&tool_defs).map_or(0, |s| s.len());
+        agent.update(
+            id,
+            &crate::context_meter::update(
+                completion.input_tokens,
+                completion.output_tokens,
+                request_chars,
+                session.folds.view_size(&session.messages),
+            ),
+        );
         if !completion.cancelled && completion.finish_reason.as_deref() == Some("length") {
             // Cut off at the output limit: tool calls may be truncated JSON, so drop them, keep any text and
             // ask the model to continue in smaller steps instead of ending the turn silently.

@@ -1,3 +1,5 @@
+use crate::hub_chat::shared_commands as shared;
+
 use super::{
     catchup_block, injection_block, partial_block, queue, seed_block, text_block, tool_digests,
     AgentId, ContextTurn, MemoryTarget, SessionActor, ToolContent, TurnId, TurnView, Value,
@@ -95,7 +97,9 @@ impl SessionActor {
         if let Some(hint) =
             crate::agy_delegate::hint(&self.ctx, agent, &self.row.id, fresh, &turn.user_text)
         {
-            blocks.push(text_block(hint));
+            if crate::orchestra::may_delegate(&self.ctx, agent).await {
+                blocks.push(text_block(hint));
+            }
         }
         if let Some(hint) = crate::codex_delegate::hint(&self.ctx, agent, &self.row.id).await {
             blocks.push(text_block(hint));
@@ -108,6 +112,16 @@ impl SessionActor {
                 .find(|s| s.name == name)
             {
                 user = Some(crate::hub_chat::skill_prompt(&skill, input));
+            }
+            // 修复：agy/自定义提供商没有命令文件，插件命令（装在 Claude Code 用户目录）在这里展开成文本。
+            if user.is_none() && shared::needs_shared(&self.ctx, agent) {
+                if let Some((command, _)) = shared::shared_commands(&self.ctx)
+                    .await
+                    .into_iter()
+                    .find(|(c, _)| c.name == name)
+                {
+                    user = Some(shared::command_prompt(&command, input));
+                }
             }
         }
         blocks.push(text_block(user.as_deref().unwrap_or(&turn.user_text)));

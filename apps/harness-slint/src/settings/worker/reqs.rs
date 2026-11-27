@@ -51,6 +51,17 @@ pub enum PlanOp {
     RemoveCatalog {
         name: String,
     },
+    /// Installs, updates or switches on a plugin read from `plugin.root` (`docs/plans/plugins.md`).
+    InstallPlugin {
+        plugin: Box<harness_plugins::Plugin>,
+        marketplace: String,
+        rev: Option<String>,
+    },
+    /// Removes what a plugin wrote; `keep` switches it off instead of uninstalling.
+    RemovePlugin {
+        name: String,
+        keep: bool,
+    },
 }
 
 pub enum DocKind {
@@ -113,10 +124,27 @@ pub enum Req {
     SkillsHealth {
         seq: u64,
     },
+    /// Switches a built-in plugin server on or off (`docs/plans/plugins.md` §3); no diff, Harness-owned file.
+    PluginBuiltin {
+        name: String,
+        on: bool,
+    },
+}
+
+/// What the plugin store records once a plugin plan was applied.
+pub enum PluginCommit {
+    /// Installed, updated or switched back on: the new record.
+    Install {
+        name: String,
+        record: harness_plugins::InstalledPlugin,
+    },
+    /// Switched off (record kept, nothing written) or uninstalled (record dropped).
+    Remove { name: String, keep: bool },
 }
 
 pub(super) enum Pending {
     Plan(WritePlan),
     Import(WritePlan, String),
     Memory(api::MemoryPlan),
+    Plugin(WritePlan, PluginCommit),
 }

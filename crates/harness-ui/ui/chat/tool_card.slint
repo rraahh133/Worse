@@ -5,17 +5,19 @@ import { AgentTint, Pill, ProgressTrack, CapsHeader } from "../panels/common.sli
 import { ChatUi, ChatImage, ToolPart, ChangeRow, PlanRow, ScheduleRow, SubagentRow } from "globals.slint";
 import { LiveUi } from "../panels/live.slint";
 import { ArtClock } from "../components/ascii.slint";
+import { MediaUi } from "media_viewer.slint";
 
-// Row of small image previews; a click opens the file in the OS viewer.
+// Row of small image / video previews; a click opens the in-app viewer (MediaUi).
 export component ImageStrip inherits HorizontalLayout {
     in property <[ChatImage]> images;
     in property <int> more;
     in property <bool> at-end;
+    in property <length> tile-height: 72px;
     alignment: root.at-end ? end : start;
     spacing: 6px;
     for img in root.images: Rectangle {
-        height: 72px;
-        width: max(48px, min(112px, 72px * img.image.width / max(1, img.image.height)));
+        height: root.tile-height;
+        width: max(root.tile-height * 0.66, min(root.tile-height * 1.8, root.tile-height * img.image.width / max(1, img.image.height)));
         border-radius: 8px;
         border-width: 1px;
         border-color: ita.has-hover ? Theme.border-hover : Theme.border;
@@ -30,10 +32,25 @@ export component ImageStrip inherits HorizontalLayout {
             image-fit: cover;
             accessible-role: none;
         }
+        if img.video: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(36px, parent.height * 0.5);
+            height: self.width;
+            border-radius: self.width / 2;
+            background: ita.has-hover ? #000000cc : #00000099;
+            Icon {
+                x: (parent.width - self.width) / 2 + 1px;
+                y: (parent.height - self.height) / 2;
+                source: Icons.play;
+                size: parent.width * 0.45;
+                tint: #ffffff;
+            }
+        }
         ita := TouchArea {
             mouse-cursor: pointer;
             clicked => {
-                ChatUi.open-path(img.path);
+                MediaUi.view(img.path);
             }
         }
     }
@@ -168,7 +185,7 @@ export component ToolCard inherits VerticalLayout {
                 ita := TouchArea {
                     mouse-cursor: pointer;
                     clicked => {
-                        ChatUi.open-path(img.path);
+                        MediaUi.view(img.path);
                     }
                 }
             }

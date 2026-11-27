@@ -22,7 +22,7 @@
 )]
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use slint::ComponentHandle;
@@ -59,6 +59,8 @@ struct State {
     tool_time: Duration,
     /// A finished turn whose token count may still arrive: its row and the model's working time.
     awaiting: Option<(ItemId, Duration)>,
+    /// Start (unix ms, [`crate::turn_clock`]) of the turn counted here.
+    turn: Option<i64>,
 }
 
 impl State {
@@ -69,8 +71,40 @@ impl State {
     }
 }
 
+// 修复：原来只有一份计数，打开别的会话就清零，切回正在运行的会话时 tok/s 从头估算（数字乱跳）。
+// 现在按会话各存一份，切换只换“当前显示的会话”，回来后接着原来的计数。
+#[derive(Default)]
+struct Speeds {
+    /// Session shown in the chat: the functions below count for it.
+    shown: Option<String>,
+    sessions: HashMap<String, State>,
+}
+
 thread_local! {
-    static STATE: RefCell<State> = RefCell::default();
+    static SPEEDS: RefCell<Speeds> = RefCell::default();
+}
+
+/// Runs `f` on the count of the shown session.
+fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
+    SPEEDS.with(|cell| {
+        let mut speeds = cell.borrow_mut();
+        let key = speeds.shown.clone().unwrap_or_default();
+        f(speeds.sessions.entry(key).or_default())
+    })
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// The instant of `at` (unix ms), for a turn that may have started before it was shown.
+fn instant_of(at: Option<i64>) -> Instant {
+    let now = Instant::now();
+    at.and_then(|at| u64::try_from(now_ms().saturating_sub(at)).ok())
+        .and_then(|ago| now.checked_sub(Duration::from_millis(ago)))
+        .unwrap_or(now)
 }
 
 /// Tokens per second for `tokens` over `time`, or `None` when the time was too short to say.
@@ -101,25 +135,44 @@ fn working(wall: Duration, tool_time: Duration) -> Duration {
     wall.saturating_sub(tool_time)
 }
 
-/// A turn started: the count starts over.
-pub(crate) fn start(window: &AppWindow) {
-    STATE.with(|cell| {
-        let mut s = cell.borrow_mut();
+/// The shown session runs the turn that started at `turn` (unix ms): a new turn starts the count over, the
+/// same turn (shown again, another attempt) keeps it.
+pub(crate) fn start(window: &AppWindow, turn: Option<i64>) {
+    let fresh = with(|s| {
+        if turn.is_some() && s.turn == turn && s.started.is_some() {
+            return false;
+        }
         let awaiting = s.awaiting.take();
         *s = State {
-            started: Some(Instant::now()),
+            started: Some(instant_of(turn)),
             awaiting,
+            turn,
             ..State::default()
         };
+        true
     });
-    window
-        .global::<ChatUi>()
-        .set_speed(slint::SharedString::new());
+    if fresh {
+        window
+            .global::<ChatUi>()
+            .set_speed(slint::SharedString::new());
+    }
 }
 
-/// Another session is shown: nothing of the previous one is pending.
-pub(crate) fn reset(window: &AppWindow) {
-    STATE.with(|cell| *cell.borrow_mut() = State::default());
+/// Another session is shown (`None`: none): the count of the one left is kept for when it is shown again.
+pub(crate) fn show(window: &AppWindow, session: Option<&str>) {
+    SPEEDS.with(|cell| {
+        let mut speeds = cell.borrow_mut();
+        speeds.shown = session.map(str::to_owned);
+        let now = Instant::now();
+        speeds.sessions.retain(|_, s| {
+            // 重新打开会话时条目 id 会重新分配：旧的回答行、工具行 id 作废，只保留回合的字数和时间。
+            s.awaiting = None;
+            s.row = None;
+            s.close_tools(now);
+            s.tools.clear();
+            s.started.is_some()
+        });
+    });
     window
         .global::<ChatUi>()
         .set_speed(slint::SharedString::new());
@@ -127,8 +180,7 @@ pub(crate) fn reset(window: &AppWindow) {
 
 /// A tool row of the running turn appeared or changed status.
 pub(crate) fn tool(id: ItemId, status: ToolStatus) {
-    STATE.with(|cell| {
-        let mut s = cell.borrow_mut();
+    with(|s| {
         if s.started.is_none() {
             return;
         }
@@ -145,8 +197,7 @@ pub(crate) fn tool(id: ItemId, status: ToolStatus) {
 
 /// Text of the running turn arrived: answer text of `row`, or thinking text (`None`).
 pub(crate) fn text(window: &AppWindow, row: Option<ItemId>, chars: usize) {
-    let label = STATE.with(|cell| {
-        let mut s = cell.borrow_mut();
+    let label = with(|s| {
         let now = Instant::now();
         if let Some(last) = s.last {
             let gap = now.duration_since(last);
@@ -177,7 +228,7 @@ pub(crate) fn text(window: &AppWindow, row: Option<ItemId>, chars: usize) {
 /// Once a second while a turn runs: the live label goes away when no text arrived for a while (a tool is
 /// running), so it never shows a stale rate.
 pub(crate) fn tick(window: &AppWindow) {
-    let stale = STATE.with(|cell| cell.borrow().last.map_or(true, |t| t.elapsed() > GAP));
+    let stale = with(|s| s.last.map_or(true, |t| t.elapsed() > GAP));
     let ui = window.global::<ChatUi>();
     if stale && !ui.get_speed().is_empty() {
         ui.set_speed(slint::SharedString::new());
@@ -189,8 +240,7 @@ pub(crate) fn finish(window: &AppWindow) -> Option<(ItemId, String)> {
     window
         .global::<ChatUi>()
         .set_speed(slint::SharedString::new());
-    STATE.with(|cell| {
-        let mut s = cell.borrow_mut();
+    with(|s| {
         let now = Instant::now();
         s.close_tools(now);
         s.tools.clear();
@@ -204,8 +254,8 @@ pub(crate) fn finish(window: &AppWindow) -> Option<(ItemId, String)> {
 
 /// The agent reported the output tokens of the turn that just ended: the reported figure for its answer row.
 pub(crate) fn reported(tokens: u64) -> Option<(ItemId, String)> {
-    STATE.with(|cell| {
-        let (row, time) = cell.borrow_mut().awaiting.take()?;
+    with(|s| {
+        let (row, time) = s.awaiting.take()?;
         if let Some(sample) = rate(tokens as f64, time) {
             harness_perf::counter_float(harness_perf::Counter::TokensPerSecond, sample);
         }

@@ -8,7 +8,7 @@
     "crates/harness-agent-hub/src/hub/api.rs": { "max": 790, "reason": "the single `impl HarnessCore for Hub`; methods only delegate to per-area modules" },
     "crates/harness-host-protocol/src/sidecar.rs": { "max": 430, "reason": "legacy Tauri stack, frozen" },
     "crates/harness-host/src/server.rs": { "max": 415, "reason": "legacy Tauri stack, frozen" },
-    "crates/harness-ui/ui/app.slint": { "max": 740, "reason": "root window properties/callbacks are the Rust API surface plus the full-window page overlays (Board, Orchestra, PRD, Work); layout lives in components" },
+    "crates/harness-ui/ui/app.slint": { "max": 750, "reason": "root window properties/callbacks are the Rust API surface plus the full-window page overlays (Board, Orchestra, PRD, Work, media viewer); layout lives in components" },
     "crates/harness-ui/ui/brand/ascii_art.slint": { "max": 1370, "reason": "generated art data, no logic" }
   }
 }

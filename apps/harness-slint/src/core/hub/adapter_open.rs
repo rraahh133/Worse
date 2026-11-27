@@ -83,6 +83,17 @@ impl Adapter {
             paused,
         });
         view.running = running;
+        // 修复：回合在别的会话显示时开始（或应用刚打开），计时从快照里该回合的创建时间算起，而不是从 0。
+        match detail
+            .turns
+            .iter()
+            .find(|t| t.status == api::TurnStatus::Running)
+        {
+            Some(turn) => {
+                crate::turn_clock::started(&id, turn.id.as_str(), Some(turn.created_at));
+            }
+            None => crate::turn_clock::ended(&id),
+        }
         self.emit(Event::Running {
             session: id.clone(),
             running,

@@ -164,6 +164,19 @@ fn write_entry(map: &mut OMap, server: &McpServer, dialect: Dialect, is_new: boo
     set_extra(map, dialect.known(), &server.extra);
 }
 
+/// Servers of an `mcpServers` object as plugins ship it (Claude Code keys; anything else = none).
+pub(crate) fn from_value(servers: &serde_json::Value) -> Vec<McpServer> {
+    let value = harness_settings::json::OValue::from_json(servers.clone());
+    value
+        .as_object()
+        .map(|map| {
+            map.iter()
+                .filter_map(|(name, v)| v.as_object().map(|m| read_entry(name, m, Dialect::Claude)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Servers of a JSON file (missing file = none).
 pub(crate) async fn list_json(path: &Path, dialect: Dialect) -> Result<Vec<McpServer>> {
     let file = JsonFile::load(path).await?;
@@ -214,6 +227,27 @@ pub(crate) async fn plan_add_many_json(
     let mut file = JsonFile::load(path).await?;
     let map = file.root().object_mut(MCP_KEY);
     for server in servers {
+        validate(server)?;
+        let is_new = map.get(&server.name).is_none();
+        write_entry(map.object_mut(&server.name), server, dialect, is_new);
+    }
+    Ok(file.into_change())
+}
+
+/// One change that writes `upserts` and removes `removes` (missing names are ignored), so several servers of
+/// one plugin end up in a single write instead of overwriting each other.
+pub(crate) async fn plan_batch_json(
+    path: &Path,
+    dialect: Dialect,
+    upserts: &[McpServer],
+    removes: &[String],
+) -> Result<FileChange> {
+    let mut file = JsonFile::load(path).await?;
+    let map = file.root().object_mut(MCP_KEY);
+    for name in removes {
+        map.remove(name);
+    }
+    for server in upserts {
         validate(server)?;
         let is_new = map.get(&server.name).is_none();
         write_entry(map.object_mut(&server.name), server, dialect, is_new);

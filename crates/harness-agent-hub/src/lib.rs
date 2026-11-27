@@ -66,6 +66,7 @@ mod snapshot;
 pub mod store;
 mod store_chat;
 pub mod symbol_claims;
+mod tool_gateway;
 mod tools;
 mod util;
 pub mod work;

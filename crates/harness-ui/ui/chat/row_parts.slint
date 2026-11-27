@@ -175,9 +175,17 @@ export component AssistantBubble inherits Rectangle {
             }
             if !root.select-mode: MarkdownView {
                 blocks: root.item.blocks;
+                msg: root.item.id;
                 link(url) => {
                     root.link(url);
                 }
+            }
+            // Images / videos the answer names (local files): click to view inside Harness.
+            if root.item.images.length > 0: ImageStrip {
+                images: root.item.images;
+                more: root.item.images-more;
+                tile-height: 132px;
+                padding-top: 6px;
             }
             if root.select-mode: Rectangle {
                 background: Theme.card;

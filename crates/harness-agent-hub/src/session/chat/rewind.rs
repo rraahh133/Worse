@@ -4,6 +4,19 @@ use super::{
     RewindOutcome, RewindResult, SendMessage, SessionActor, TurnId, Value,
 };
 
+/// Sent by Retry when the failed turn had already done part of the work.
+const CONTINUE_PROMPT: &str =
+    "The connection dropped before you finished. Continue the previous task \
+from where you stopped; do not redo steps that are already done.";
+
+/// A failed or interrupted turn that already produced text or ran tools: Retry continues it instead of
+/// starting over.
+fn resumable(turn: &harness_core_api::TurnView) -> bool {
+    use harness_core_api::TurnStatus;
+    matches!(turn.status, TurnStatus::Failed | TurnStatus::Interrupted)
+        && (!turn.assistant_text.trim().is_empty() || !turn.tool_calls.is_empty())
+}
+
 impl SessionActor {
     /// Truncates at `command.turn` (that turn and every later one), drops all native handles, optionally
     /// restores files and resends (phase-9-parity.md §9.2.1 turn actions).
@@ -23,6 +36,13 @@ impl SessionActor {
             ));
         }
         let first = self.turns[index].clone();
+        if let Resend::Retry { agent } = &command.resend {
+            if !command.restore_files && resumable(&first) {
+                // 修复：连接中断后点 Retry 会删掉这一轮并重发原提示，代理从头再做一遍；
+                // 已经做了一部分时保留这一轮，发一条"继续"消息，让代理接着做。
+                return self.continue_turn(first, agent.clone()).await;
+            }
+        }
         let resend = match command.resend {
             Resend::None => None,
             Resend::Edit {
@@ -95,6 +115,31 @@ impl SessionActor {
                 files,
             },
             accepted,
+        })
+    }
+
+    /// Keeps the failed turn (and the agent's native session) and asks the agent to carry on.
+    async fn continue_turn(
+        &mut self,
+        failed: harness_core_api::TurnView,
+        agent: Option<AgentId>,
+    ) -> ApiResult<RewindOutcome> {
+        let message = SendMessage {
+            session_id: self.row.id.clone(),
+            text: CONTINUE_PROMPT.to_owned(),
+            agent,
+            client_message_id: None,
+            context: Vec::new(),
+        };
+        let accepted = self.on_send(message, None).await?;
+        Ok(RewindOutcome {
+            result: RewindResult {
+                removed_turns: 0,
+                user_text: failed.user_text,
+                context: failed.context,
+                files: None,
+            },
+            accepted: Some(accepted),
         })
     }
 
@@ -207,9 +252,17 @@ impl SessionActor {
                 });
             }
             Some("usage_update") => {
-                let Some(usage) = context_usage(update) else {
+                let Some(mut usage) = context_usage(update) else {
                     return;
                 };
+                // 修复：Claude Code 报的是模型原生窗口（1M），实际按 settings.json 里该模型的
+                // autoCompactWindow 压缩；上下文面板和 Harness 的自动压缩都按这个窗口算。
+                if let Some(model) = super::window::usage_model(update) {
+                    let env = self.ctx.specs.get(agent).map(|s| s.env.as_slice());
+                    if let Some(dir) = super::window::config_dir(env.unwrap_or_default()) {
+                        usage.size = super::window::effective_size(&dir, model, usage.size).await;
+                    }
+                }
                 if let Some(turn) = self.turn_mut(turn_id) {
                     turn.context_usage = Some(usage.clone());
                 }

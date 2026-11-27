@@ -121,7 +121,17 @@ async fn handle(
     let is_child = hub.ctx.subagents.is_child(&parent);
     let is_router = hub.ctx.routers.is_router(&parent);
     let args = &request["args"];
-    match request["op"].as_str() {
+    let op = request["op"].as_str();
+    if op == Some("delegate")
+        && !is_child
+        && !crate::orchestra::may_delegate(&hub.ctx, &parent_row.active_agent).await
+    {
+        return Err(
+            "this agent is not connected in the Harness Orchestra, so it cannot start subagents"
+                .into(),
+        );
+    }
+    match op {
         Some("route" | "dismiss") if !is_router => {
             Err("only the Harness inbox router can route or dismiss triggers".into())
         }

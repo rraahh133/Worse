@@ -1,6 +1,6 @@
 [package]
 name = "harness-slint"
-version = "0.1.14"
+version = "0.1.15"
 edition.workspace = true
 # Slint 1.18 itself requires Rust 1.92 (enforced through its own rust-version).
 rust-version.workspace = true
@@ -50,6 +50,8 @@ harness-api-agent = { path = "../../crates/harness-api-agent" }
 harness-settings = { path = "../../crates/harness-settings" }
 # Phase 9.1 settings pages: per-CLI MCP / skills / commands / hooks / subagents / instructions (plan → diff → apply).
 harness-agent-config = { path = "../../crates/harness-agent-config" }
+harness-plugins = { path = "../../crates/harness-plugins" }
+harness-connectors = { path = "../../crates/harness-connectors" }
 # Resolves the "system" language to the OS locale.
 sys-locale = "0.3.2"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
@@ -62,7 +64,7 @@ harness-platform = { path = "../../crates/harness-platform" }
 harness-perf = { path = "../../crates/harness-perf" }
 alacritty_terminal = { version = "0.26", default-features = false }
 # Phase 9.2 composer: image paste (clipboard bitmap → PNG), file picker, whiteboard / annotation PNG export.
-image = { version = "0.25", default-features = false, features = ["png", "bmp", "jpeg", "gif", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "bmp", "jpeg", "gif", "webp", "ico"] }
 rfd = { version = "0.17", default-features = false, features = ["gtk3"] }
 xcap = "0.9"
 enigo = "0.6"

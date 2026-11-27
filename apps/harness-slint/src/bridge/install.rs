@@ -62,6 +62,9 @@ pub fn install(
             crate::speed::tick(&window);
         }
     });
+    window
+        .global::<crate::ui::ChatUi>()
+        .on_turn_secs(crate::turn_clock::shown_secs);
     crate::live::set_workspace(workspace);
     window.global::<PanelNav>().on_open_tab(move |id| {
         if let Some(window) = weak.upgrade() {

@@ -11,7 +11,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tokio = { version = "1", default-features = false, features = ["fs", "sync", "io-util"] }
+tokio = { version = "1", default-features = false, features = ["fs", "sync", "io-util", "time"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

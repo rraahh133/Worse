@@ -46,6 +46,10 @@ impl UiState {
                 row.blocks = ModelRc::from(model.clone());
                 self.blocks.insert(id, model);
                 self.texts.insert(id, text.clone());
+                if !matches!(status, crate::core::TurnStatus::Streaming) {
+                    let media = super::media_refs::find(text, &self.workspace);
+                    (row.images, row.images_more) = self.row_images(id, &media);
+                }
             }
             Item::Tool {
                 agent,

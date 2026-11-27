@@ -25,6 +25,7 @@ mod md_store;
 pub mod overlay;
 mod paths;
 pub mod plan;
+pub mod plugin_read;
 mod service;
 pub mod skill_catalog;
 pub mod skill_health;

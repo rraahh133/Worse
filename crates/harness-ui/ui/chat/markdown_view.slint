@@ -7,6 +7,8 @@ import { Theme } from "../theme/tokens.slint";
 
 export component MarkdownView inherits VerticalLayout {
     in property <[MdBlock]> blocks;
+    // The message these blocks belong to (`ChatItem.id`): text selection is keyed and limited by it.
+    in property <int> msg;
     callback link(string);
     spacing: 12px;
     min-width: 0px;
@@ -14,17 +16,25 @@ export component MarkdownView inherits VerticalLayout {
     // 修复：表格单元格若用 preferred-width: 0 求等宽列，StyledText 会按 0 宽度换行计算首选高度，行高暴涨、后续行被裁掉。
     // 改为按实际宽度给出固定列宽；宽度经 changed 回调写入普通属性，避免 width -> 子项 -> width 的绑定环。
     property <length> content-width: 400px;
+    // 修复：跨块拖选会一路扩到上下其他消息，复制时混进别的回复；把这条消息的上下边界交给每个文本块，
+    // 拖选范围被限制在这个看不见的框里（`chat::select`）。
+    property <length> box-top: root.absolute-position.y;
+    property <length> box-bottom: root.absolute-position.y + root.height;
     changed width => {
         root.content-width = root.width;
     }
     init => {
         root.content-width = root.width;
     }
-    for b in root.blocks: VerticalLayout {
+    for b[bi] in root.blocks: VerticalLayout {
         // 修复（8.2 遗留：长回复与下一条消息重叠）：段落 StyledText 位于 for/if 重复项内，布局的宽度约束传不到它的
         // 高度测量，首选高度按未换行的单行宽度计算（实测行高 60px，实际需 114px）；ListView 按该高度摆放下一行，
         // 于是下一条消息压在换行后的文字上。显式给出内容宽度，高度即按实际换行宽度计算（gate 断言相邻行不重叠）。
         if b.kind == 0 || b.kind == 1: RichSelect {
+            box-top: root.box-top;
+            box-bottom: root.box-bottom;
+            msg: root.msg;
+            block: bi;
             width: root.content-width;
             text: Theme.dark ? b.text-dark : b.text;
             plain: b.plain;
@@ -103,6 +113,10 @@ export component MarkdownView inherits VerticalLayout {
                     padding-top: 0px;
                     // 同上：代码块文字也显式给宽度，换行后的高度才会计入行高。
                     if b.highlighted && cb.wrap: RichSelect {
+                        box-top: root.box-top;
+                        box-bottom: root.box-bottom;
+                        msg: root.msg;
+                        block: bi;
                         width: root.content-width - 24px;
                         text: Theme.dark ? b.code-dark : b.code-light;
                         plain: b.plain;
@@ -163,6 +177,11 @@ export component MarkdownView inherits VerticalLayout {
                     }
                 }
                 RichSelect {
+                    box-top: root.box-top;
+                    box-bottom: root.box-bottom;
+                    msg: root.msg;
+                    block: bi;
+                    list-row: ri;
                     width: root.content-width - (b.lang == "ol" ? 24px : 20px);
                     text: Theme.dark ? r.cells-dark[0] : r.cells[0];
                     plain: r.plain;

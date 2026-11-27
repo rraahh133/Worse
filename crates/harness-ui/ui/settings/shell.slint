@@ -9,6 +9,8 @@ import { GeneralPage, AppearancePage } from "general.slint";
 import { ShortcutsPage } from "shortcuts.slint";
 import { AgentsPage, FallbackRow } from "agents.slint";
 import { ConfigPage, DocPage } from "config.slint";
+import { PluginsPage, PluginsDialogs } from "plugins.slint";
+import { PluginsUi } from "plugins_ui.slint";
 import { Labels } from "labels.slint";
 import { ProjectsPage, ArchivePage } from "data.slint";
 import { OrchestraPage } from "orchestra.slint";
@@ -253,6 +255,9 @@ export component SettingsShell inherits Rectangle {
                     if SettingsUi.page == "mcp" || SettingsUi.page == "skill" || SettingsUi.page == "command" || SettingsUi.page == "hook" || SettingsUi.page == "subagent": ConfigPage {
                         stacked: root.stacked;
                     }
+                    if SettingsUi.page == "plugins": PluginsPage {
+                        stacked: root.stacked;
+                    }
                     if SettingsUi.page == "projects": ProjectsPage {
                         stacked: root.stacked;
                         add-folder => {
@@ -315,6 +320,7 @@ export component SettingsShell inherits Rectangle {
         }
     }
     if InboxUi.form-open: SourceDialog { }
+    if PluginsUi.add-open || PluginsUi.client-open: PluginsDialogs { }
     if DiffUi.open: DiffDialog {
         close => {
             DiffUi.cancel();

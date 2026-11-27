@@ -195,7 +195,7 @@ pub struct GeneralSettings {
     /// settings files load. `gpu_rendering` is the real one.
     pub hardware_acceleration: bool,
     /// Draw with the GPU (Skia on OpenGL / Direct3D / Metal) instead of the CPU. Smoother on very large
-    /// screens and with animated wallpapers, at about 170 MB more memory. Takes effect after restart.
+    /// screens and with animated wallpapers, at about 170 MB more memory. On by default. Takes effect after restart.
     pub gpu_rendering: bool,
     pub follow_up: FollowUp,
     pub composer_send: ComposerSend,
@@ -219,7 +219,7 @@ impl Default for GeneralSettings {
             terminal: TerminalSettings::default(),
             proxy: ProxySettings::default(),
             hardware_acceleration: true,
-            gpu_rendering: false,
+            gpu_rendering: true,
             follow_up: FollowUp::Queue,
             composer_send: ComposerSend::Enter,
             show_reasoning: true,

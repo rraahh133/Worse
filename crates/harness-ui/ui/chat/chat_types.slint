@@ -21,6 +21,8 @@ export struct ChipRow {
 export struct ChatImage {
     path: string,
     image: image,
+    // A video file: `image` is its first frame (or a plain tile) and the strip draws a play badge.
+    video: bool,
 }
 
 // One line of an expanded tool card (core Event::ToolDetail, R8).

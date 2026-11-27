@@ -17,5 +17,11 @@ fn main() -> ExitCode {
     if args.iter().any(|a| a == helpers::FLAG_DELEGATE) {
         return helpers::run_delegate_mcp();
     }
+    if args.iter().any(|a| a == helpers::FLAG_TOOL_GATEWAY) {
+        return helpers::run_tool_gateway();
+    }
+    if args.first().map(String::as_str) == Some(helpers::FLAG_CONNECTOR_MCP) {
+        return helpers::run_connector_mcp(args.into_iter().skip(1));
+    }
     helpers::run_memory_mcp(args)
 }
